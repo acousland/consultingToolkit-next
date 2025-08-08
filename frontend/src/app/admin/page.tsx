@@ -9,17 +9,17 @@ export default function Admin() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await api<{message:string}>("/ai/ping");
+        const res = await fetch(`/api/ai/ping`).then(r=>r.json()) as {message:string};
         setPing(res.message);
       } catch {
         setPing("error");
       }
       try {
-        const status = await api<{enabled:boolean; provider:string; model:string; temperature:number}>("/ai/llm/status");
+        const status = await fetch(`/api/ai/llm/status`).then(r=>r.json()) as {enabled:boolean; provider:string; model:string; temperature:number};
         setLlmStatus(status);
         if (status.enabled) {
           try {
-            const health = await api<{status:string}>("/ai/llm/health");
+            const health = await fetch(`/api/ai/llm/health`).then(r=>r.json()) as {status:string};
             setLlmHealth(health.status);
           } catch (e:any) {
             setLlmHealth(`error`);
