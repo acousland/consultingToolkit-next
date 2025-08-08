@@ -62,7 +62,7 @@ export default function CapabilityMapping() {
     <main className="min-h-screen p-8">
       <div className="mx-auto max-w-5xl space-y-6">
         <h1 className="text-3xl font-bold">Capability Mapping</h1>
-        <p className="text-gray-600">Upload pain points and paste your capability catalogue (IDs + names/descriptions). We'll map each pain point to the most relevant capability ID.</p>
+  <p className="text-gray-600">Upload pain points and paste your capability catalogue (IDs + names/descriptions). We&apos;ll map each pain point to the most relevant capability ID.</p>
 
         <form id="cap-map-form" className="grid md:grid-cols-2 gap-6" onSubmit={onSubmit}>
           <div className="space-y-3">
