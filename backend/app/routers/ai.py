@@ -421,3 +421,204 @@ async def describe_capabilities(payload: CapDescribeRequest):
             base = f"The {it.name} capability enables the organisation to {it.summary.strip().rstrip('.').lower()}."
         results.append(CapDescribeOut(id=it.id, name=it.name, description=base))
     return results
+
+
+# ---------------------------------------------------------------------------
+# Applications Toolkit
+
+
+class AppItem(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = ""
+
+
+class CapItem(BaseModel):
+    id: str
+    name: str
+
+
+class AppCapMapRequest(BaseModel):
+    applications: List[AppItem]
+    capabilities: List[CapItem]
+
+
+class AppCapMapResponse(BaseModel):
+    application_id: str
+    capability_ids: List[str]
+
+
+@router.post("/applications/capabilities/map", response_model=List[AppCapMapResponse])
+async def map_applications_to_capabilities(payload: AppCapMapRequest):
+    caps = payload.capabilities or []
+    if not caps:
+        return []
+    out: List[AppCapMapResponse] = []
+    for app in payload.applications:
+        desc = (app.description or "").lower()
+        matched = [c.id for c in caps if c.name.lower() in desc]
+        if not matched:
+            idx = sum(ord(ch) for ch in app.id) % len(caps)
+            matched = [caps[idx].id]
+        out.append(AppCapMapResponse(application_id=app.id, capability_ids=matched))
+    return out
+
+
+class LogicalAppModelRequest(BaseModel):
+    applications: List[AppItem]
+
+
+class LogicalAppModelResponse(BaseModel):
+    model: List[str]
+
+
+@router.post("/applications/logical-model", response_model=LogicalAppModelResponse)
+async def logical_application_model(payload: LogicalAppModelRequest):
+    apps = payload.applications or []
+    model: List[str] = []
+    for i, app in enumerate(apps):
+        nxt = apps[(i + 1) % len(apps)].name if apps else ""
+        model.append(f"{app.name} interacts with {nxt}")
+    return {"model": model}
+
+
+class IndividualAppMapRequest(BaseModel):
+    application_description: str
+    capabilities: List[CapItem]
+
+
+class IndividualAppMapResponse(BaseModel):
+    capability_ids: List[str]
+
+
+@router.post("/applications/map", response_model=IndividualAppMapResponse)
+async def individual_application_map(payload: IndividualAppMapRequest):
+    caps = payload.capabilities or []
+    desc = payload.application_description.lower()
+    matched = [c.id for c in caps if c.name.lower() in desc]
+    if not matched and caps:
+        matched = [caps[0].id]
+    return {"capability_ids": matched}
+
+
+# ---------------------------------------------------------------------------
+# Engagement Planning Toolkit
+
+
+class EngagementPlanRequest(BaseModel):
+    audience: str
+    goal: str
+
+
+class EngagementPlanResponse(BaseModel):
+    touchpoints: List[str]
+
+
+@router.post("/engagement/plan", response_model=EngagementPlanResponse)
+async def engagement_plan(payload: EngagementPlanRequest):
+    touchpoints = [
+        f"Initial email to {payload.audience}",
+        "Follow-up meeting",
+        f"Deliverable addressing {payload.goal}",
+    ]
+    return {"touchpoints": touchpoints}
+
+
+# ---------------------------------------------------------------------------
+# Strategy and Motivations Toolkit
+
+
+class StrategyMapRequest(BaseModel):
+    strategies: List[str]
+    capabilities: List[CapItem]
+
+
+class StrategyCapMap(BaseModel):
+    strategy: str
+    capability_ids: List[str]
+
+
+@router.post("/strategy/capabilities/map", response_model=List[StrategyCapMap])
+async def strategy_capability_map(payload: StrategyMapRequest):
+    caps = payload.capabilities or []
+    results: List[StrategyCapMap] = []
+    for strat in payload.strategies:
+        matched = [c.id for c in caps if c.name.lower() in strat.lower()]
+        if not matched and caps:
+            matched = [caps[0].id]
+        results.append(StrategyCapMap(strategy=strat, capability_ids=matched))
+    return results
+
+
+class TacticsToStrategiesRequest(BaseModel):
+    tactics: List[str]
+
+
+class TacticsToStrategiesResponse(BaseModel):
+    strategies: List[str]
+
+
+@router.post("/strategy/tactics/generate", response_model=TacticsToStrategiesResponse)
+async def tactics_to_strategies(payload: TacticsToStrategiesRequest):
+    strategies = [f"Support tactic: {t}" for t in payload.tactics]
+    return {"strategies": strategies}
+
+
+# ---------------------------------------------------------------------------
+# Data, Information, and AI Toolkit
+
+
+class ConceptualDataModelRequest(BaseModel):
+    entities: List[str]
+
+
+class ConceptualDataModelResponse(BaseModel):
+    model: List[str]
+
+
+@router.post("/data/conceptual-model", response_model=ConceptualDataModelResponse)
+async def conceptual_data_model(payload: ConceptualDataModelRequest):
+    ents = payload.entities or []
+    model: List[str] = []
+    for i, e in enumerate(ents):
+        nxt = ents[(i + 1) % len(ents)] if ents else None
+        if nxt:
+            model.append(f"{e} -> {nxt}")
+    return {"model": model}
+
+
+class DataAppMapRequest(BaseModel):
+    datasets: List[str]
+    applications: List[str]
+
+
+class DataAppMapResponse(BaseModel):
+    mappings: Dict[str, str]
+
+
+@router.post("/data/application/map", response_model=DataAppMapResponse)
+async def data_application_map(payload: DataAppMapRequest):
+    mappings: Dict[str, str] = {}
+    apps = payload.applications or []
+    for i, ds in enumerate(payload.datasets):
+        if apps:
+            mappings[ds] = apps[i % len(apps)]
+    return {"mappings": mappings}
+
+
+class UseCaseCustomiseRequest(BaseModel):
+    template: str
+    context: str
+
+
+class UseCaseCustomiseResponse(BaseModel):
+    custom_use_case: str
+
+
+@router.post("/use-case/customise", response_model=UseCaseCustomiseResponse)
+async def customise_use_case(payload: UseCaseCustomiseRequest):
+    if "{context}" in payload.template:
+        custom = payload.template.replace("{context}", payload.context)
+    else:
+        custom = f"{payload.template} ({payload.context})"
+    return {"custom_use_case": custom}

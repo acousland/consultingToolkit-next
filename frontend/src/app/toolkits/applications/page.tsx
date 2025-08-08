@@ -1,8 +1,8 @@
 export default function ApplicationsToolkit() {
   const links = [
-    { href: "#", label: "Application → Capability Mapping (coming soon)", disabled: true, emoji: "🔗" },
-    { href: "#", label: "Logical Application Model Generator (coming soon)", disabled: true, emoji: "🧱" },
-    { href: "#", label: "Individual Application Mapping (coming soon)", disabled: true, emoji: "🧩" },
+    { href: "/applications/capabilities", label: "Application → Capability Mapping", disabled: false, emoji: "🔗" },
+    { href: "/applications/logical-model", label: "Logical Application Model Generator", disabled: false, emoji: "🧱" },
+    { href: "/applications/map", label: "Individual Application Mapping", disabled: false, emoji: "🧩" },
   ];
   return (
     <main>

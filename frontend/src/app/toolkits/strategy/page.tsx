@@ -1,7 +1,7 @@
 export default function StrategyToolkit() {
   const links = [
-    { href: "#", label: "Strategy → Capability Mapping (coming soon)", disabled: true, emoji: "🧠" },
-    { href: "#", label: "Tactics to Strategies Generator (coming soon)", disabled: true, emoji: "🪜" },
+    { href: "/strategy/capabilities", label: "Strategy → Capability Mapping", disabled: false, emoji: "🧠" },
+    { href: "/strategy/tactics", label: "Tactics to Strategies Generator", disabled: false, emoji: "🪜" },
   ];
   return (
     <main>

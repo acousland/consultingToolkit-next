@@ -18,6 +18,15 @@ Last updated: 2025-08-08
   - POST `/ai/use-case/evaluate`: basic evaluator (MVP, heuristics fallback)
   - POST `/ai/ethics/review`: basic ethics review (MVP, heuristics fallback)
   - POST `/ai/capabilities/describe`: generate capability descriptions (LLM with fallback)
+  - POST `/ai/applications/capabilities/map`: application to capability mapping
+  - POST `/ai/applications/logical-model`: logical application model generator
+  - POST `/ai/applications/map`: individual application mapping
+  - POST `/ai/engagement/plan`: engagement touchpoint planning
+  - POST `/ai/strategy/capabilities/map`: strategy to capability mapping
+  - POST `/ai/strategy/tactics/generate`: tactics to strategies generator
+  - POST `/ai/data/conceptual-model`: conceptual data model generator
+  - POST `/ai/data/application/map`: data-application mapping
+  - POST `/ai/use-case/customise`: AI use case customiser
   - Pain Points:
     - POST `/ai/pain-points/extract/text`
     - POST `/ai/pain-points/extract/file`
@@ -37,11 +46,19 @@ Last updated: 2025-08-08
 - Toolkit hubs – `/toolkits/{pain-points,capabilities,applications,data-ai,engagement,strategy}`
 - Pain Points – `/pain-points`, `/pain-points/themes`, `/pain-points/capabilities`, `/pain-points/impact`
 - Capabilities – `/capabilities/describe`
-- Data & AI – `/toolkits/data-ai/use-cases/{evaluate,ethics}`
+- Applications – `/applications/capabilities`, `/applications/logical-model`, `/applications/map`
+- Engagement – `/engagement/plan`
+- Strategy – `/strategy/capabilities`, `/strategy/tactics`
+- Data & AI – `/toolkits/data-ai/use-cases/{evaluate,ethics}`, `/data/conceptual-model`, `/data/application-map`, `/use-cases/customise`
 
 Edge API routes (proxy to FastAPI):
 - `/api/ai/pain-points/{extract/file, themes/map, themes/map.xlsx, capabilities/map, capabilities/map.xlsx, impact/estimate, impact/estimate.xlsx}`
 - `/api/ai/use-case/evaluate`, `/api/ai/ethics/review`, `/api/ai/capabilities/describe`
+- `/api/ai/applications/{capabilities/map, logical-model, map}`
+- `/api/ai/engagement/plan`
+- `/api/ai/strategy/{capabilities/map, tactics/generate}`
+- `/api/ai/data/{conceptual-model, application/map}`
+- `/api/ai/use-case/customise`
 
 ## Porting status (from Streamlit app)
 
@@ -55,23 +72,23 @@ Edge API routes (proxy to FastAPI):
 - [x] Capability Description Generation
 
 3) Applications Toolkit
-- [ ] Application → Capability Mapping
-- [ ] Logical Application Model Generator
-- [ ] Individual Application Mapping
+ - [x] Application → Capability Mapping
+ - [x] Logical Application Model Generator
+ - [x] Individual Application Mapping
 
 4) Engagement Planning Toolkit
-- [ ] Engagement Touchpoint Planning
+ - [x] Engagement Touchpoint Planning
 
 5) Strategy and Motivations Toolkit
-- [ ] Strategy → Capability Mapping
-- [ ] Tactics to Strategies Generator
+ - [x] Strategy → Capability Mapping
+ - [x] Tactics to Strategies Generator
 
 6) Data, Information, and AI Toolkit
-- [ ] Conceptual Data Model Generator
-- [ ] Data-Application Mapping
-- [ ] AI Use Case Customiser
-- [x] Use Case Evaluation (MVP)
-- [x] Use Case Ethics Review (MVP)
+ - [x] Conceptual Data Model Generator
+ - [x] Data-Application Mapping
+ - [x] AI Use Case Customiser
+  - [x] Use Case Evaluation (MVP)
+  - [x] Use Case Ethics Review (MVP)
 
 ## Key decisions
 
@@ -87,7 +104,7 @@ Edge API routes (proxy to FastAPI):
 
 ## Open items / next steps
 
-- Build out remaining toolkit features (Applications, Engagement, Strategy) and associated prompts.
+ - Refine toolkit prompts and add server-side validation.
 - Add server-side validation and basic rate limiting.
 - Add unit tests for services (parsing/cleaning/mapping; XLSX generation).
 - Consider background jobs (RQ/Celery) for large files; introduce job status endpoints.
