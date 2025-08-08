@@ -55,8 +55,8 @@ export default function ImpactEstimation() {
   }
 
   return (
-    <main className="min-h-screen p-8">
-      <div className="mx-auto max-w-5xl space-y-6">
+    <main className="min-h-screen p-2 sm:p-4">
+      <div className="mx-auto max-w-[110rem] space-y-6">
         <h1 className="text-3xl font-bold">Impact Estimation</h1>
         <p className="text-gray-600">Upload pain points, pick the ID and text columns, and get impact scores per pain point.</p>
 
