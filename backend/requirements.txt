@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+pydantic
+python-multipart
+pandas
+openpyxl
+xlsxwriter
+langchain
+langchain-openai
+openai
+redis
+celery
+rq
+python-dotenv
