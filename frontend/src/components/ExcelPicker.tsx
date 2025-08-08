@@ -2,11 +2,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 
+type Cell = string | number | boolean | null | undefined;
 export interface ExcelSelection {
   file: File | null;
   sheet: string | null;
   headers: string[];
-  preview: any[][]; // first few rows including header row
+  preview: Cell[][]; // first few rows including header row
 }
 
 export function ExcelPicker({ onChange, accept = ".csv,.xls,.xlsx,.xlsm", className = "" }: {
@@ -19,7 +20,7 @@ export function ExcelPicker({ onChange, accept = ".csv,.xls,.xlsx,.xlsm", classN
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [sheet, setSheet] = useState<string | null>(null);
   const [headers, setHeaders] = useState<string[]>([]);
-  const [preview, setPreview] = useState<any[][]>([]);
+  const [preview, setPreview] = useState<Cell[][]>([]);
 
   function parseWorkbook(wb: XLSX.WorkBook, initialSheet?: string) {
     const names = wb.SheetNames || [];
@@ -28,7 +29,7 @@ export function ExcelPicker({ onChange, accept = ".csv,.xls,.xlsx,.xlsm", classN
     setSheet(sel || null);
     if (sel) {
       const ws = wb.Sheets[sel];
-      const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+  const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as Cell[][];
       const hdr = (data[0] || []).map((h) => String(h));
       setHeaders(hdr);
       setPreview(data.slice(0, 6));
