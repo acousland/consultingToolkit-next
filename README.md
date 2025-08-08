@@ -44,6 +44,16 @@ npm run dev
 
 Open http://localhost:3000 (or whichever port Next.js selects).
 
+## Testing
+
+Run frontend lint checks and backend tests with:
+
+```bash
+./scripts/test-all.sh
+```
+
+The script installs dependencies as needed, lints the frontend, and executes Python tests for the backend.
+
 ## Docker Compose
 
 The compose file wires API and Web:

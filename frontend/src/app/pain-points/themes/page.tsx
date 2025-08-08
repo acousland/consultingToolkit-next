@@ -42,8 +42,9 @@ export default function PainPointThemesPage() {
       if (!res.ok) throw new Error(await res.text());
       const json = (await res.json()) as ThemeMapRes;
       setResult(json);
-    } catch (e: any) {
-      setError(e?.message || "Failed to generate themes");
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Failed to generate themes";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -112,8 +113,9 @@ export default function PainPointThemesPage() {
         a.href = url; a.download = "theme_perspective_mapping.xlsx"; a.click();
         URL.revokeObjectURL(url);
       }
-    } catch (e: any) {
-      setError(e?.message || "Download failed");
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Download failed";
+      setError(message);
     } finally {
       setDownloading(false);
       setDownloadProgress(null);
@@ -211,7 +213,7 @@ export default function PainPointThemesPage() {
                   {result.rows.map((r, idx) => (
                     <tr key={idx} className="odd:bg-white/5">
                       {result.columns.map((c) => (
-                        <td key={c} className="p-2 align-top">{String((r as any)[c] ?? "")}</td>
+                        <td key={c} className="p-2 align-top">{r[c] ?? ""}</td>
                       ))}
                     </tr>
                   ))}
