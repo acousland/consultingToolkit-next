@@ -569,56 +569,116 @@ async def tactics_to_strategies(payload: TacticsToStrategiesRequest):
 
 
 class ConceptualDataModelRequest(BaseModel):
-    entities: List[str]
+    """Request body for conceptual model generation."""
+    context: str = ""
+
+
+class DataEntity(BaseModel):
+    subject_area: str
+    entity: str
+    description: str
 
 
 class ConceptualDataModelResponse(BaseModel):
-    model: List[str]
+    subject_areas: List[str]
+    entities: List[DataEntity]
 
 
 @router.post("/data/conceptual-model", response_model=ConceptualDataModelResponse)
 async def conceptual_data_model(payload: ConceptualDataModelRequest):
-    ents = payload.entities or []
-    model: List[str] = []
-    for i, e in enumerate(ents):
-        nxt = ents[(i + 1) % len(ents)] if ents else None
-        if nxt:
-            model.append(f"{e} -> {nxt}")
-    return {"model": model}
+    """Generate simple subject areas and entities from supplied context."""
+    words = [w.strip(" ,.;:-") for w in payload.context.split()]
+    areas: List[str] = []
+    for w in words:
+        if len(w) > 3:
+            t = w.title()
+            if t not in areas:
+                areas.append(t)
+            if len(areas) >= 5:
+                break
+    if not areas:
+        areas = ["General"]
+    entities: List[Dict[str, str]] = []
+    for area in areas:
+        for i in range(1, 4):
+            entities.append(
+                {
+                    "subject_area": area,
+                    "entity": f"{area} Entity {i}",
+                    "description": f"Example entity {i} for {area}",
+                }
+            )
+    return {"subject_areas": areas, "entities": entities}
 
 
 class DataAppMapRequest(BaseModel):
-    datasets: List[str]
+    data_entities: List[str]
     applications: List[str]
 
 
+class DataAppMapping(BaseModel):
+    data_entity: str
+    application: str
+    relationship: str
+    rationale: str
+
+
 class DataAppMapResponse(BaseModel):
-    mappings: Dict[str, str]
+    mappings: List[DataAppMapping]
 
 
 @router.post("/data/application/map", response_model=DataAppMapResponse)
 async def data_application_map(payload: DataAppMapRequest):
-    mappings: Dict[str, str] = {}
+    """Produce simple mappings between data entities and applications."""
     apps = payload.applications or []
-    for i, ds in enumerate(payload.datasets):
-        if apps:
-            mappings[ds] = apps[i % len(apps)]
+    rel_types = ["System of Record", "System of Entry"]
+    mappings: List[Dict[str, str]] = []
+    for i, de in enumerate(payload.data_entities):
+        app = apps[i % len(apps)] if apps else ""
+        rel = rel_types[i % len(rel_types)]
+        mappings.append(
+            {
+                "data_entity": de,
+                "application": app,
+                "relationship": rel,
+                "rationale": f"{app} serves as the {rel.lower()} for {de}.",
+            }
+        )
     return {"mappings": mappings}
 
 
 class UseCaseCustomiseRequest(BaseModel):
-    template: str
-    context: str
+    use_cases: List[str]
+    context: str = ""
+
+
+class UseCaseCustomiseItem(BaseModel):
+    use_case: str
+    customised: str
+    score: int
+    rationale: str
 
 
 class UseCaseCustomiseResponse(BaseModel):
-    custom_use_case: str
+    results: List[UseCaseCustomiseItem]
 
 
 @router.post("/use-case/customise", response_model=UseCaseCustomiseResponse)
 async def customise_use_case(payload: UseCaseCustomiseRequest):
-    if "{context}" in payload.template:
-        custom = payload.template.replace("{context}", payload.context)
-    else:
-        custom = f"{payload.template} ({payload.context})"
-    return {"custom_use_case": custom}
+    """Rank and customise supplied use cases for the given context."""
+    results: List[Dict[str, Any]] = []
+    for uc in payload.use_cases:
+        base = len(uc) % 10
+        score = min(10, base + (2 if payload.context else 0) + 1)
+        customised = f"{uc.strip()} for {payload.context.strip()}" if payload.context else uc.strip()
+        rationale = "Score based on description length; placeholder rationale."
+        results.append(
+            {
+                "use_case": uc,
+                "customised": customised,
+                "score": score,
+                "rationale": rationale,
+            }
+        )
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return {"results": results}
