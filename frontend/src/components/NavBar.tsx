@@ -1,7 +1,6 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useTheme } from "@/components/ThemeProvider";
 
 function NavLink({ href, label }: { href: string; label: string }) {
   const pathname = usePathname();
@@ -19,9 +18,8 @@ function NavLink({ href, label }: { href: string; label: string }) {
 }
 
 export default function NavBar() {
-  const { theme, toggle } = useTheme();
   return (
-    <header className="sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:supports-[backdrop-filter]:bg-black/40 border-b border-black/10 dark:border-white/10">
+    <header className="sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-black/40 border-b border-white/10">
       <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2">
@@ -39,11 +37,8 @@ export default function NavBar() {
           <NavLink href="/toolkits/strategy" label="Strategy" />
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={toggle} className="px-2 py-1.5 text-sm rounded-md border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/10" aria-label="Toggle theme">
-            {theme === "dark" ? "🌙" : "☀️"}
-          </button>
-          <Link href="/admin" className="px-3 py-1.5 text-sm rounded-md border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/10">Admin</Link>
-          <Link href="/toolkits/pain-points" className="px-3 py-1.5 text-sm rounded-md bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow hover:opacity-95">Get Started</Link>
+            <Link href="/admin" className="px-3 py-1.5 text-sm rounded-md border border-white/10 hover:bg-white/10">Admin</Link>
+            <Link href="/toolkits/pain-points" className="px-3 py-1.5 text-sm rounded-md bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow hover:opacity-95">Get Started</Link>
         </div>
       </nav>
     </header>

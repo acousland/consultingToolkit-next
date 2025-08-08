@@ -1,3 +1,8 @@
+from dotenv import load_dotenv
+
+# Load environment variables from a local .env file if present
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routers.ai import router as ai_router

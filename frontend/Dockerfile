@@ -1,16 +1,18 @@
 # Use official Node.js image for Next.js
-FROM node:20-alpine AS deps
+FROM node:20-bookworm-slim AS deps
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* frontend/pnpm-lock.yaml* ./
-RUN npm ci || npm install
+RUN npm ci
 
-FROM node:20-alpine AS builder
+FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend/ ./
+# Ensure API base URL targets the docker service during build time
+ENV NEXT_PUBLIC_API_BASE_URL=http://api:8000
 RUN npm run build
 
-FROM node:20-alpine AS runner
+FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 # Expose default Next.js port

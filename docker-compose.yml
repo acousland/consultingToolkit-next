@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   api:
     build:
@@ -11,6 +10,13 @@ services:
     ports:
       - "8000:8000"
     restart: unless-stopped
+    healthcheck:
+      # Use Python stdlib to avoid needing curl/wget in the image
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).getcode()==200 else 1)\" "]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   web:
     build:
@@ -24,3 +30,10 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+    healthcheck:
+      # Use Node to perform a simple HTTP GET to the root page
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000', r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\" "]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s

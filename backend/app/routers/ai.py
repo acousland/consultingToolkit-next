@@ -1,11 +1,13 @@
 from typing import Optional, Dict, Any, List
+import os
 import io
 import pandas as pd
-from fastapi import APIRouter, UploadFile, File, Form, Response
+from fastapi import APIRouter, UploadFile, File, Form, Response, HTTPException
 from pydantic import BaseModel, Field
 from ..services.pain_points import extract_from_file, extract_from_texts
 from ..services.themes import map_themes_perspectives, PREDEFINED_THEMES, PREDEFINED_PERSPECTIVES
 from ..services.capabilities import map_capabilities, dataframe_to_xlsx_bytes as caps_to_xlsx
+from ..services.llm import llm
 from ..services.impact import estimate_impact, dataframe_to_xlsx_bytes as impact_to_xlsx
 
 router = APIRouter(prefix="/ai", tags=["AI"])
@@ -14,6 +16,47 @@ router = APIRouter(prefix="/ai", tags=["AI"])
 @router.get("/ping")
 def ping():
     return {"message": "AI router alive"}
+
+
+class LLMStatus(BaseModel):
+    enabled: bool
+    provider: str
+    model: str
+    temperature: float
+
+
+@router.get("/llm/status", response_model=LLMStatus)
+def llm_status():
+    """Report whether an LLM is configured and which model is selected."""
+    # Derive provider/model from env; enabled reflects runtime object availability.
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    temp = float(os.getenv("OPENAI_TEMPERATURE", "0.2") or 0.2)
+    provider = "openai" if os.getenv("OPENAI_API_KEY") else "none"
+    return {
+        "enabled": llm is not None,
+        "provider": provider,
+        "model": model,
+        "temperature": temp,
+    }
+
+
+@router.get("/llm/health")
+async def llm_health():
+    """Attempt a tiny round-trip to the configured LLM, if enabled."""
+    if llm is None:
+        raise HTTPException(status_code=503, detail="LLM not configured")
+    try:
+        from langchain_core.messages import HumanMessage  # lazy import
+        out = await __import__("asyncio").get_event_loop().run_in_executor(
+            None, llm.invoke, [HumanMessage(content="Return exactly: OK")]
+        )
+        content = getattr(out, "content", "")
+        ok = "OK" in content.strip()
+        if not ok:
+            raise RuntimeError("Unexpected LLM output")
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"LLM call failed: {e}")
 
 
 class UseCaseEvalRequest(BaseModel):
@@ -289,20 +332,90 @@ async def extract_pain_points_file(
     additional_prompts: Optional[str] = Form(""),
     chunk_size: Optional[int] = Form(20),
     sheet_name: Optional[str] = Form(None),
+    header_row_index: Optional[int] = Form(None, description="Zero-based index of the header row"),
 ):
     content = await file.read()
     try:
         cols = []
         if selected_columns:
             cols = list(dict.fromkeys(__import__("json").loads(selected_columns)))
-    except Exception:
-        return {"pain_points": []}
-    points, _ = await extract_from_file(
-        filename=file.filename or "uploaded",
-        content=content,
-        selected_columns=cols,
-        additional_prompts=additional_prompts or "",
-        chunk_size=int(chunk_size or 20),
-        sheet_name=sheet_name,
-    )
-    return {"pain_points": points}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid selected_columns: {e}")
+    try:
+        points, _ = await extract_from_file(
+            filename=file.filename or "uploaded",
+            content=content,
+            selected_columns=cols,
+            additional_prompts=additional_prompts or "",
+            chunk_size=int(chunk_size or 20),
+            sheet_name=sheet_name,
+            header_row_index=header_row_index,
+        )
+        return {"pain_points": points}
+    except ValueError as ve:
+        # User error (e.g., missing columns) -> 400
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        # Unexpected error -> 500
+        raise HTTPException(status_code=500, detail="Extraction failed")
+
+
+# Capability Description Generator
+class CapDescribeItem(BaseModel):
+    id: str
+    name: str
+    summary: Optional[str] = ""
+
+
+class CapDescribeRequest(BaseModel):
+    items: List[CapDescribeItem]
+    company_context: Optional[str] = ""
+
+
+class CapDescribeOut(BaseModel):
+    id: str
+    name: str
+    description: str
+
+
+@router.post("/capabilities/describe", response_model=List[CapDescribeOut])
+async def describe_capabilities(payload: CapDescribeRequest):
+    items = payload.items or []
+    if not items:
+        return []
+    # If LLM configured, attempt a single-shot prompt; otherwise return heuristic descriptions.
+    if llm is not None:
+        try:
+            caps_text = "\n".join(f"- {it.id}: {it.name}{' — ' + it.summary if it.summary else ''}" for it in items)
+            ctx = payload.company_context or ""
+            prompt = (
+                "You will receive a list of business capabilities (ID and name, with optional context).\n"
+                "For each, output a concise, plain-English description (1-2 sentences) that explains purpose, scope, and value.\n"
+                "Return them as lines in the form 'ID -> description' with no extra commentary.\n\n"
+                f"Context: {ctx}\n\nCapabilities:\n{caps_text}"
+            )
+            out = llm.invoke([__import__("langchain_core.messages").langchain_core.messages.HumanMessage(content=prompt)])
+            raw = getattr(out, "content", "") or ""
+            mapping: Dict[str, str] = {}
+            for line in raw.splitlines():
+                s = line.strip()
+                if not s or "->" not in s:
+                    continue
+                left, right = s.split("->", 1)
+                mapping[left.strip()] = right.strip()
+            results: List[CapDescribeOut] = []
+            for it in items:
+                desc = mapping.get(it.id) or mapping.get(it.name) or f"The {it.name} capability enables the organisation to {('' if not it.summary else it.summary.lower())} and deliver consistent outcomes."
+                results.append(CapDescribeOut(id=it.id, name=it.name, description=desc))
+            return results
+        except Exception:
+            # fall back to heuristic if anything fails
+            pass
+    # Heuristic fallback
+    results: List[CapDescribeOut] = []
+    for it in items:
+        base = f"The {it.name} capability enables the organisation to operate, improve, and govern related activities."
+        if it.summary:
+            base = f"The {it.name} capability enables the organisation to {it.summary.strip().rstrip('.').lower()}."
+        results.append(CapDescribeOut(id=it.id, name=it.name, description=base))
+    return results

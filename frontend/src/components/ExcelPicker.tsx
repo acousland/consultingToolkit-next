@@ -8,6 +8,7 @@ export interface ExcelSelection {
   sheet: string | null;
   headers: string[];
   preview: Cell[][]; // first few rows including header row
+  headerRowIndex?: number; // zero-based
 }
 
 export function ExcelPicker({ onChange, accept = ".csv,.xls,.xlsx,.xlsm", className = "" }: {
@@ -45,13 +46,18 @@ export function ExcelPicker({ onChange, accept = ".csv,.xls,.xlsx,.xlsm", classN
     setFile(f);
     if (f.name.toLowerCase().endsWith(".csv")) {
       const text = await f.text();
-  const rows = text.split(/\r?\n/).map((line) => line.split(","));
-  const idx = Math.min(headerRowIndex, Math.max(0, rows.length - 1));
-  const hdr = (rows[idx] || []).map((h) => String(h));
-      setSheetNames(["CSV"]);
-  setSheet("CSV");
-  setHeaders(hdr);
-  setPreview(rows.slice(idx, idx + 6));
+      // Use XLSX parser to correctly handle quoted fields and commas
+      const wb = XLSX.read(text, { type: "string" });
+      const names = wb.SheetNames || ["CSV"];
+      const sel = names[0] || "CSV";
+      setSheetNames([sel]);
+      setSheet(sel);
+      const ws = wb.Sheets[sel];
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as Cell[][];
+      const idx = Math.min(headerRowIndex, Math.max(0, data.length - 1));
+      const hdr = (data[idx] || []).map((h) => String(h));
+      setHeaders(hdr);
+      setPreview(data.slice(idx, idx + 6));
       return;
     }
     const buf = await f.arrayBuffer();
@@ -69,8 +75,8 @@ export function ExcelPicker({ onChange, accept = ".csv,.xls,.xlsx,.xlsm", classN
   }
 
   useEffect(() => {
-    onChange({ file, sheet, headers, preview });
-  }, [file, sheet, headers, preview, onChange]);
+    onChange({ file, sheet, headers, preview, headerRowIndex });
+  }, [file, sheet, headers, preview, headerRowIndex, onChange]);
 
   const fileName = useMemo(() => (file ? file.name : "No file selected"), [file]);
 
