@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { ExcelPicker, type ExcelSelection } from "@/components/ExcelPicker";
 import { api } from "@/lib/api";
 
 interface ExtractRes { pain_points: string[] }
@@ -11,6 +12,8 @@ export default function PainPoints() {
   const [loading, setLoading] = useState(false);
   const [points, setPoints] = useState<string[]>([]);
   const [error, setError] = useState("");
+  const [excel, setExcel] = useState<ExcelSelection>({ file: null, sheet: null, headers: [], preview: [] });
+  const [selectedCols, setSelectedCols] = useState<string[]>([]);
 
   const rows = useMemo(() => rowsText.split("\n").map(s => s.trim()).filter(Boolean), [rowsText]);
 
@@ -30,17 +33,13 @@ export default function PainPoints() {
 
   async function runFile(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); setLoading(true); setError(""); setPoints([]);
-    const form = e.currentTarget;
-    const fileInput = form.elements.namedItem("file") as HTMLInputElement;
-    const colsInput = form.elements.namedItem("columns") as HTMLInputElement;
-    const sheetInput = form.elements.namedItem("sheet") as HTMLInputElement;
-    if (!fileInput.files?.[0]) { setError("Select a file"); setLoading(false); return; }
+    if (!excel.file) { setError("Select a file"); setLoading(false); return; }
     const fd = new FormData();
-    fd.append("file", fileInput.files[0]);
-    fd.append("selected_columns", JSON.stringify(colsInput.value.split(",").map(s => s.trim()).filter(Boolean)));
+    fd.append("file", excel.file);
+    fd.append("selected_columns", JSON.stringify(selectedCols));
     fd.append("additional_prompts", extra);
     fd.append("chunk_size", String(chunk));
-    if (sheetInput.value) fd.append("sheet_name", sheetInput.value);
+    if (excel.sheet) fd.append("sheet_name", excel.sheet);
     try {
       const res = await fetch(`/api/ai/pain-points/extract/file`, { method: "POST", body: fd });
       // Use Next.js middleware/proxy or direct API_BASE; here assume /api routes proxy to backend
@@ -70,11 +69,27 @@ export default function PainPoints() {
 
           <form className="space-y-3" onSubmit={runFile}>
             <label className="block text-sm font-medium">Upload CSV/XLSX</label>
-            <input type="file" name="file" accept=".csv,.xls,.xlsx,.xlsm" className="block" />
-            <label className="block text-sm font-medium">Columns (comma-separated)</label>
-            <input type="text" name="columns" placeholder="title,description" className="w-full p-2 border rounded" />
-            <label className="block text-sm font-medium">Sheet name (optional)</label>
-            <input type="text" name="sheet" className="w-full p-2 border rounded" />
+            <ExcelPicker onChange={setExcel} />
+            {excel.headers.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium">Select columns</label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {excel.headers.map((h)=> (
+                    <label key={h} className={`px-2 py-1 border rounded cursor-pointer ${selectedCols.includes(h)? 'bg-blue-600 text-white' : 'bg-white dark:bg-black/40'}` }>
+                      <input
+                        type="checkbox"
+                        className="mr-1"
+                        checked={selectedCols.includes(h)}
+                        onChange={(e)=> {
+                          setSelectedCols((prev)=> e.target.checked ? [...prev, h] : prev.filter(x=>x!==h));
+                        }}
+                      />
+                      {h}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             <button className="px-4 py-2 bg-gray-900 text-white rounded disabled:opacity-50" disabled={loading} type="submit">
               {loading ? "Uploading..." : "Extract from file"}
             </button>

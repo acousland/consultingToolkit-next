@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { ExcelPicker, type ExcelSelection } from "@/components/ExcelPicker";
 
 interface CapMapRes {
   columns: string[];
@@ -16,20 +17,20 @@ export default function CapabilityMapping() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<CapMapRes | null>(null);
+  const [excel, setExcel] = useState<ExcelSelection>({ file: null, sheet: null, headers: [], preview: [] });
+  const [selectedCols, setSelectedCols] = useState<string[]>([]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); setLoading(true); setError(""); setResult(null);
-    const form = e.currentTarget;
-    const fileInput = (form.elements.namedItem("file") as HTMLInputElement);
-    if (!fileInput?.files?.[0]) { setError("Select a file"); setLoading(false); return; }
+  if (!excel.file) { setError("Select a file"); setLoading(false); return; }
     const fd = new FormData();
-    fd.append("file", fileInput.files[0]);
+  fd.append("file", excel.file);
     fd.append("id_column", idCol);
-    fd.append("text_columns", JSON.stringify(textCols.split(",").map(s=>s.trim()).filter(Boolean)));
+  fd.append("text_columns", JSON.stringify((selectedCols.length? selectedCols : textCols.split(",").map(s=>s.trim()).filter(Boolean)) ));
     fd.append("capabilities_text", capabilities);
     fd.append("additional_context", context);
     fd.append("batch_size", String(batch));
-    if (sheet) fd.append("sheet_name", sheet);
+  if (excel.sheet || sheet) fd.append("sheet_name", excel.sheet || sheet);
     const res = await fetch("/api/ai/pain-points/capabilities/map", { method: "POST", body: fd });
     if (!res.ok) { setError(`HTTP ${res.status}`); setLoading(false); return; }
     const json = (await res.json()) as CapMapRes;
@@ -38,17 +39,15 @@ export default function CapabilityMapping() {
   }
 
   async function downloadXlsx() {
-    const form = document.getElementById("cap-map-form") as HTMLFormElement;
-    const fileInput = form.elements.namedItem("file") as HTMLInputElement;
-    if (!fileInput?.files?.[0]) { setError("Select a file first"); return; }
+  if (!excel.file) { setError("Select a file first"); return; }
     const fd = new FormData();
-    fd.append("file", fileInput.files[0]);
+  fd.append("file", excel.file);
     fd.append("id_column", idCol);
-    fd.append("text_columns", JSON.stringify(textCols.split(",").map(s=>s.trim()).filter(Boolean)));
+  fd.append("text_columns", JSON.stringify((selectedCols.length? selectedCols : textCols.split(",").map(s=>s.trim()).filter(Boolean)) ));
     fd.append("capabilities_text", capabilities);
     fd.append("additional_context", context);
     fd.append("batch_size", String(batch));
-    if (sheet) fd.append("sheet_name", sheet);
+  if (excel.sheet || sheet) fd.append("sheet_name", excel.sheet || sheet);
     const res = await fetch("/api/ai/pain-points/capabilities/map.xlsx", { method: "POST", body: fd });
     if (!res.ok) { setError(`Download failed: HTTP ${res.status}`); return; }
     const blob = await res.blob();
@@ -67,11 +66,31 @@ export default function CapabilityMapping() {
         <form id="cap-map-form" className="grid md:grid-cols-2 gap-6" onSubmit={onSubmit}>
           <div className="space-y-3">
             <label className="block text-sm font-medium">Upload CSV/XLSX</label>
-            <input type="file" name="file" accept=".csv,.xls,.xlsx,.xlsm" className="block" />
+            <ExcelPicker onChange={setExcel} />
             <label className="block text-sm font-medium">Pain Point ID column</label>
             <input type="text" className="w-full p-2 border rounded" value={idCol} onChange={e=>setIdCol(e.target.value)} placeholder="e.g. Pain_Point_ID" />
             <label className="block text-sm font-medium">Text columns (comma-separated)</label>
             <input type="text" className="w-full p-2 border rounded" value={textCols} onChange={e=>setTextCols(e.target.value)} placeholder="e.g. Title,Description" />
+            {excel.headers.length > 0 && (
+              <div>
+                <div className="text-sm text-gray-600">Or select from detected headers</div>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {excel.headers.map((h)=> (
+                    <label key={h} className={`px-2 py-1 border rounded cursor-pointer ${selectedCols.includes(h)? 'bg-blue-600 text-white' : 'bg-white dark:bg-black/40'}` }>
+                      <input
+                        type="checkbox"
+                        className="mr-1"
+                        checked={selectedCols.includes(h)}
+                        onChange={(e)=> {
+                          setSelectedCols((prev)=> e.target.checked ? [...prev, h] : prev.filter(x=>x!==h));
+                        }}
+                      />
+                      {h}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             <label className="block text-sm font-medium">Sheet name (optional)</label>
             <input type="text" className="w-full p-2 border rounded" value={sheet} onChange={e=>setSheet(e.target.value)} />
           </div>
