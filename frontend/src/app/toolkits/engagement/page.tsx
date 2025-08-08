@@ -1,6 +1,6 @@
 export default function EngagementToolkit() {
   const links = [
-    { href: "#", label: "Engagement Touchpoint Planning (coming soon)", disabled: true, emoji: "🗓️" },
+    { href: "/engagement/plan", label: "Engagement Touchpoint Planning", disabled: false, emoji: "🗓️" },
   ];
   return (
     <main>

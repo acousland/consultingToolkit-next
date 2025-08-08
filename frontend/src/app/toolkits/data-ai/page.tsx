@@ -2,9 +2,9 @@ export default function DataAIToolkit() {
   const links = [
     { href: "/toolkits/data-ai/use-cases/evaluate", label: "Use Case Evaluation", emoji: "🧪", disabled: false },
     { href: "/toolkits/data-ai/use-cases/ethics", label: "Use Case Ethics Review", emoji: "⚖️", disabled: false },
-    { href: "#", label: "Conceptual Data Model Generator (coming soon)", emoji: "🧬", disabled: true },
-    { href: "#", label: "Data-Application Mapping (coming soon)", emoji: "🗺️", disabled: true },
-    { href: "#", label: "AI Use Case Customiser (coming soon)", emoji: "🤖", disabled: true },
+    { href: "/data/conceptual-model", label: "Conceptual Data Model Generator", emoji: "🧬", disabled: false },
+    { href: "/data/application-map", label: "Data-Application Mapping", emoji: "🗺️", disabled: false },
+    { href: "/use-cases/customise", label: "AI Use Case Customiser", emoji: "🤖", disabled: false },
   ];
   return (
     <main>

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { API_BASE, api } from "@/lib/api";
+import { API_BASE } from "@/lib/api";
 
 export default function Admin() {
   const [ping, setPing] = useState<string>("");
@@ -21,7 +21,7 @@ export default function Admin() {
           try {
             const health = await fetch(`/api/ai/llm/health`).then(r=>r.json()) as {status:string};
             setLlmHealth(health.status);
-          } catch (e:any) {
+          } catch {
             setLlmHealth(`error`);
           }
         } else {
