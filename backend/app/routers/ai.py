@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from ..services.pain_points import extract_from_file, extract_from_texts
 from ..services.themes import map_themes_perspectives, PREDEFINED_THEMES, PREDEFINED_PERSPECTIVES
 from ..services.capabilities import map_capabilities, dataframe_to_xlsx_bytes as caps_to_xlsx
-from ..services.llm import llm
+from ..services.llm import llm, EFFECTIVE_TEMPERATURE
 from ..services.impact import estimate_impact, dataframe_to_xlsx_bytes as impact_to_xlsx
 
 router = APIRouter(prefix="/ai", tags=["AI"])
@@ -31,12 +31,14 @@ def llm_status():
     # Derive provider/model from env; enabled reflects runtime object availability.
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     temp = float(os.getenv("OPENAI_TEMPERATURE", "0.2") or 0.2)
+    # Reflect effective temperature if model only supports default
+    eff_temp = EFFECTIVE_TEMPERATURE if llm is not None else temp
     provider = "openai" if os.getenv("OPENAI_API_KEY") else "none"
     return {
         "enabled": llm is not None,
         "provider": provider,
         "model": model,
-        "temperature": temp,
+        "temperature": eff_temp,
     }
 
 

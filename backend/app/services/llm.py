@@ -5,11 +5,18 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", 0.2))
+CONFIGURED_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", 0.2))
+
+def _supports_arbitrary_temperature(model: str) -> bool:
+    # Some frontier models (e.g., certain gpt-5-* variants) only accept the default temperature (1)
+    # Heuristic: treat any 'gpt-5' model as not supporting arbitrary temperatures
+    return "gpt-5" not in (model or "").lower()
+
+EFFECTIVE_TEMPERATURE = CONFIGURED_TEMPERATURE if _supports_arbitrary_temperature(MODEL) else 1.0
 
 api_key = os.getenv("OPENAI_API_KEY")
 try:
-    llm = ChatOpenAI(model=MODEL, temperature=TEMPERATURE) if api_key else None
+    llm = ChatOpenAI(model=MODEL, temperature=EFFECTIVE_TEMPERATURE) if api_key else None
 except Exception:
     llm = None
 
