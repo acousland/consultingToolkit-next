@@ -1,8 +1,12 @@
 from typing import Optional, Dict, Any, List
-from fastapi import APIRouter, UploadFile, File, Form
+import io
+import pandas as pd
+from fastapi import APIRouter, UploadFile, File, Form, Response
 from pydantic import BaseModel, Field
 from ..services.pain_points import extract_from_file, extract_from_texts
 from ..services.themes import map_themes_perspectives, PREDEFINED_THEMES, PREDEFINED_PERSPECTIVES
+from ..services.capabilities import map_capabilities, dataframe_to_xlsx_bytes as caps_to_xlsx
+from ..services.impact import estimate_impact, dataframe_to_xlsx_bytes as impact_to_xlsx
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -125,6 +129,157 @@ async def pain_point_theme_map(
         sheet_name=sheet_name,
     )
     return {"columns": list(map(str, df.columns)), "rows": df.to_dict(orient="records")}
+
+
+@router.post("/pain-points/themes/map.xlsx")
+async def pain_point_theme_map_xlsx(
+    file: UploadFile = File(...),
+    id_column: str = Form(...),
+    text_columns: str = Form(...),
+    additional_context: Optional[str] = Form(""),
+    batch_size: Optional[int] = Form(10),
+    sheet_name: Optional[str] = Form(None),
+):
+    content = await file.read()
+    try:
+        txt_cols = list(dict.fromkeys(__import__("json").loads(text_columns))) if text_columns else []
+    except Exception:
+        txt_cols = []
+    df = await map_themes_perspectives(
+        filename=file.filename or "uploaded",
+        content=content,
+        id_column=id_column,
+        text_columns=txt_cols,
+        additional_context=additional_context or "",
+        batch_size=int(batch_size or 10),
+        sheet_name=sheet_name,
+    )
+    bio = io.BytesIO()
+    with pd.ExcelWriter(bio, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False)
+    return Response(content=bio.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=theme_perspective_mapping.xlsx"})
+
+
+# Capability Mapping
+class CapMapResponse(BaseModel):
+    columns: List[str]
+    rows: List[Dict[str, Any]]
+
+
+@router.post("/pain-points/capabilities/map", response_model=CapMapResponse)
+async def pain_point_capability_map(
+    file: UploadFile = File(...),
+    id_column: str = Form(...),
+    text_columns: str = Form(...),
+    capabilities_text: str = Form(..., description="Text list of capabilities including IDs and names/descriptions"),
+    additional_context: Optional[str] = Form(""),
+    batch_size: Optional[int] = Form(15),
+    sheet_name: Optional[str] = Form(None),
+):
+    content = await file.read()
+    try:
+        txt_cols = list(dict.fromkeys(__import__("json").loads(text_columns))) if text_columns else []
+    except Exception:
+        txt_cols = []
+    df = await map_capabilities(
+        pain_filename=file.filename or "uploaded",
+        pain_content=content,
+        pain_id_column=id_column,
+        pain_text_columns=txt_cols,
+        capabilities_text=capabilities_text,
+        additional_context=additional_context or "",
+        batch_size=int(batch_size or 15),
+        sheet_name=sheet_name,
+    )
+    return {"columns": list(map(str, df.columns)), "rows": df.to_dict(orient="records")}
+
+
+@router.post("/pain-points/capabilities/map.xlsx")
+async def pain_point_capability_map_xlsx(
+    file: UploadFile = File(...),
+    id_column: str = Form(...),
+    text_columns: str = Form(...),
+    capabilities_text: str = Form(...),
+    additional_context: Optional[str] = Form(""),
+    batch_size: Optional[int] = Form(15),
+    sheet_name: Optional[str] = Form(None),
+):
+    content = await file.read()
+    try:
+        txt_cols = list(dict.fromkeys(__import__("json").loads(text_columns))) if text_columns else []
+    except Exception:
+        txt_cols = []
+    df = await map_capabilities(
+        pain_filename=file.filename or "uploaded",
+        pain_content=content,
+        pain_id_column=id_column,
+        pain_text_columns=txt_cols,
+        capabilities_text=capabilities_text,
+        additional_context=additional_context or "",
+        batch_size=int(batch_size or 15),
+        sheet_name=sheet_name,
+    )
+    xbytes = caps_to_xlsx(df)
+    return Response(content=xbytes, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=pain_point_capability_mapping.xlsx"})
+
+
+# Impact Estimation
+class ImpactResponse(BaseModel):
+    columns: List[str]
+    rows: List[Dict[str, Any]]
+
+
+@router.post("/pain-points/impact/estimate", response_model=ImpactResponse)
+async def pain_point_impact_estimate(
+    file: UploadFile = File(...),
+    id_column: str = Form(...),
+    text_columns: str = Form(...),
+    additional_context: Optional[str] = Form(""),
+    batch_size: Optional[int] = Form(15),
+    sheet_name: Optional[str] = Form(None),
+):
+    content = await file.read()
+    try:
+        txt_cols = list(dict.fromkeys(__import__("json").loads(text_columns))) if text_columns else []
+    except Exception:
+        txt_cols = []
+    df = await estimate_impact(
+        pain_filename=file.filename or "uploaded",
+        pain_content=content,
+        pain_id_column=id_column,
+        pain_text_columns=txt_cols,
+        additional_context=additional_context or "",
+        batch_size=int(batch_size or 15),
+        sheet_name=sheet_name,
+    )
+    return {"columns": list(map(str, df.columns)), "rows": df.to_dict(orient="records")}
+
+
+@router.post("/pain-points/impact/estimate.xlsx")
+async def pain_point_impact_estimate_xlsx(
+    file: UploadFile = File(...),
+    id_column: str = Form(...),
+    text_columns: str = Form(...),
+    additional_context: Optional[str] = Form(""),
+    batch_size: Optional[int] = Form(15),
+    sheet_name: Optional[str] = Form(None),
+):
+    content = await file.read()
+    try:
+        txt_cols = list(dict.fromkeys(__import__("json").loads(text_columns))) if text_columns else []
+    except Exception:
+        txt_cols = []
+    df = await estimate_impact(
+        pain_filename=file.filename or "uploaded",
+        pain_content=content,
+        pain_id_column=id_column,
+        pain_text_columns=txt_cols,
+        additional_context=additional_context or "",
+        batch_size=int(batch_size or 15),
+        sheet_name=sheet_name,
+    )
+    xbytes = impact_to_xlsx(df)
+    return Response(content=xbytes, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=pain_point_impact_estimate.xlsx"})
 
 
 @router.post("/pain-points/extract/file", response_model=PainPointExtractResponse)

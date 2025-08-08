@@ -17,6 +17,11 @@ Last updated: 2025-08-08
   - POST `/ai/pain-points/extract/text`: new – accept array of text rows, returns unique pain points
   - POST `/ai/pain-points/extract/file`: new – accept CSV/XLS(X) upload plus selected columns & options
   - POST `/ai/pain-points/themes/map`: new – upload CSV/XLS(X) with ID + text columns, returns theme & perspective mapping table
+    - POST `/ai/pain-points/themes/map.xlsx`: new – same inputs, returns XLSX
+    - POST `/ai/pain-points/capabilities/map`: new – upload pain points + provide capability catalogue text; returns mapping table
+    - POST `/ai/pain-points/capabilities/map.xlsx`: new – same inputs, returns XLSX
+    - POST `/ai/pain-points/impact/estimate`: new – upload pain points; returns impact scoring table
+    - POST `/ai/pain-points/impact/estimate.xlsx`: new – same inputs, returns XLSX
 
 ## Services
 
@@ -30,8 +35,15 @@ Last updated: 2025-08-08
 - `/` – demo page with use-case evaluation and ethics review (already present)
 - `/pain-points` – page to paste rows or upload a file, choose options, and display extracted pain points
 - `/pain-points/themes` – page to upload pain points and generate Theme & Perspective mappings
+- `/pain-points/capabilities` – page to upload pain points and map to capability IDs
+- `/pain-points/impact` – page to upload pain points and estimate impact
 - `/api/ai/pain-points/extract/file` – proxy to backend for multipart upload
 - `/api/ai/pain-points/themes/map` – proxy to backend for multipart upload
+- `/api/ai/pain-points/themes/map.xlsx` – proxy to backend for XLSX download
+- `/api/ai/pain-points/capabilities/map` – proxy to backend
+- `/api/ai/pain-points/capabilities/map.xlsx` – proxy to backend for XLSX
+- `/api/ai/pain-points/impact/estimate` – proxy to backend
+- `/api/ai/pain-points/impact/estimate.xlsx` – proxy to backend for XLSX
 
 ## Porting plan (from Streamlit app)
 
