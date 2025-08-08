@@ -94,6 +94,6 @@ async def map_capabilities(
 
 def dataframe_to_xlsx_bytes(df: pd.DataFrame) -> bytes:
     bio = io.BytesIO()
-    with pd.ExcelWriter(bio, engine="openpyxl") as writer:
+    with pd.ExcelWriter(bio, engine="xlsxwriter") as writer:
         df.to_excel(writer, index=False)
     return bio.getvalue()

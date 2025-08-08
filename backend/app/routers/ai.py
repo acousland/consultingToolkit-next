@@ -200,7 +200,7 @@ async def pain_point_theme_map_xlsx(
         sheet_name=sheet_name,
     )
     bio = io.BytesIO()
-    with pd.ExcelWriter(bio, engine="openpyxl") as writer:
+    with pd.ExcelWriter(bio, engine="xlsxwriter") as writer:
         df.to_excel(writer, index=False)
     return Response(content=bio.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=theme_perspective_mapping.xlsx"})
 
