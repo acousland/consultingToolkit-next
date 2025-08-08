@@ -5,6 +5,7 @@ python-multipart
 pandas
 openpyxl
 xlsxwriter
+xlrd
 langchain
 langchain-openai
 openai

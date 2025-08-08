@@ -1,6 +1,8 @@
-from typing import Optional, Dict, Any
-from fastapi import APIRouter
+from typing import Optional, Dict, Any, List
+from fastapi import APIRouter, UploadFile, File, Form
 from pydantic import BaseModel, Field
+from ..services.pain_points import extract_from_file, extract_from_texts
+from ..services.themes import map_themes_perspectives, PREDEFINED_THEMES, PREDEFINED_PERSPECTIVES
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -70,3 +72,82 @@ async def ethics_review(payload: EthicsReviewRequest):
         "virtue": vir,
         "summary": summary,
     }
+
+
+# Pain Point Extraction Schemas
+class PainPointExtractTextRequest(BaseModel):
+    rows: List[str] = Field(..., description="List of text rows to analyse")
+    additional_prompts: Optional[str] = ""
+    chunk_size: Optional[int] = 20
+
+
+class PainPointExtractResponse(BaseModel):
+    pain_points: List[str]
+
+
+@router.post("/pain-points/extract/text", response_model=PainPointExtractResponse)
+async def extract_pain_points_text(payload: PainPointExtractTextRequest):
+    points = await extract_from_texts(
+        payload.rows,
+        additional_prompts=payload.additional_prompts or "",
+        chunk_size=payload.chunk_size or 20,
+    )
+    return {"pain_points": points}
+
+
+# Theme & Perspective Mapping
+class ThemeMapResponse(BaseModel):
+    columns: List[str]
+    rows: List[Dict[str, Any]]
+
+
+@router.post("/pain-points/themes/map", response_model=ThemeMapResponse)
+async def pain_point_theme_map(
+    file: UploadFile = File(...),
+    id_column: str = Form(...),
+    text_columns: str = Form(..., description="JSON array of text columns to concatenate"),
+    additional_context: Optional[str] = Form(""),
+    batch_size: Optional[int] = Form(10),
+    sheet_name: Optional[str] = Form(None),
+):
+    content = await file.read()
+    try:
+        txt_cols = list(dict.fromkeys(__import__("json").loads(text_columns))) if text_columns else []
+    except Exception:
+        txt_cols = []
+    df = await map_themes_perspectives(
+        filename=file.filename or "uploaded",
+        content=content,
+        id_column=id_column,
+        text_columns=txt_cols,
+        additional_context=additional_context or "",
+        batch_size=int(batch_size or 10),
+        sheet_name=sheet_name,
+    )
+    return {"columns": list(map(str, df.columns)), "rows": df.to_dict(orient="records")}
+
+
+@router.post("/pain-points/extract/file", response_model=PainPointExtractResponse)
+async def extract_pain_points_file(
+    file: UploadFile = File(...),
+    selected_columns: str = Form(..., description="JSON array of column names"),
+    additional_prompts: Optional[str] = Form(""),
+    chunk_size: Optional[int] = Form(20),
+    sheet_name: Optional[str] = Form(None),
+):
+    content = await file.read()
+    try:
+        cols = []
+        if selected_columns:
+            cols = list(dict.fromkeys(__import__("json").loads(selected_columns)))
+    except Exception:
+        return {"pain_points": []}
+    points, _ = await extract_from_file(
+        filename=file.filename or "uploaded",
+        content=content,
+        selected_columns=cols,
+        additional_prompts=additional_prompts or "",
+        chunk_size=int(chunk_size or 20),
+        sheet_name=sheet_name,
+    )
+    return {"pain_points": points}
