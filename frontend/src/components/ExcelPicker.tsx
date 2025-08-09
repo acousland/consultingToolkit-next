@@ -92,7 +92,7 @@ export function ExcelPicker({ onChange, accept = ".csv,.xls,.xlsx,.xlsm", classN
     const hdr = (data[idx] || []).map((h) => String(h));
     setHeaders(hdr);
     setPreview(data.slice(idx, idx + 6));
-  }, [headerRowIndex]);
+  }, [headerRowIndex, data]);
 
   useEffect(() => {
     onChange({ file, sheet, headers, preview, headerRowIndex });
