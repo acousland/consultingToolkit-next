@@ -62,13 +62,13 @@ export default function PainPointThemesPage() {
         if (obj.textCols) setTextCols(obj.textCols);
       } catch {}
     }
-  }, [excel.file?.name]);
+  }, [excel.file]);
 
   useEffect(() => {
     const key = excel.file ? `themes:${excel.file.name}` : null;
     if (!key) return;
     localStorage.setItem(key, JSON.stringify({ idCol, textCols }));
-  }, [excel.file?.name, idCol, textCols]);
+  }, [excel.file, idCol, textCols]);
 
   async function downloadXlsx() {
     try {
