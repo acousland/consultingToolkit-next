@@ -103,9 +103,10 @@ export function ExcelPicker({ onChange, accept = ".csv,.xls,.xlsx,.xlsm", classN
   return (
     <div className={className}>
       <input ref={inputRef} type="file" accept={accept} hidden onChange={(e)=>{ const f=e.target.files?.[0]; if (f) handleFile(f); }} />
-      <div
-        className="relative border-2 border-dashed border-white/10 rounded-xl p-4 hover:border-white/30 transition cursor-pointer bg-zinc-900/40"
-        onClick={()=>inputRef.current?.click()}
+  <div
+    className="relative border-2 border-dashed border-white/10 rounded-xl p-4 hover:border-white/30 transition cursor-pointer bg-zinc-900/40"
+    // Only trigger file dialog when clicking the empty backdrop (not when adjusting inputs/selects)
+    onClick={(e)=>{ if (e.target === e.currentTarget) { inputRef.current?.click(); } }}
         onDragOver={(e)=>{e.preventDefault();}}
         onDrop={(e)=>{e.preventDefault(); const f=e.dataTransfer.files?.[0]; if (f) handleFile(f); }}
       >
@@ -115,7 +116,7 @@ export function ExcelPicker({ onChange, accept = ".csv,.xls,.xlsx,.xlsm", classN
           {sheetNames.length > 0 && (
             <div className="flex items-center gap-2 ml-auto">
               <label className="text-sm font-medium">Sheet</label>
-              <select className="p-2 border rounded bg-zinc-900/60" value={sheet || ""} onChange={(e)=>onSheetChange(e.target.value)} disabled={loading}>
+      <select className="p-2 border rounded bg-zinc-900/60" value={sheet || ""} onClick={(e)=>e.stopPropagation()} onChange={(e)=>onSheetChange(e.target.value)} disabled={loading}>
                 {sheetNames.map((n)=> (<option key={n} value={n}>{n}</option>))}
               </select>
             </div>
@@ -123,7 +124,7 @@ export function ExcelPicker({ onChange, accept = ".csv,.xls,.xlsx,.xlsm", classN
           {preview.length > 0 && (
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium">Header row</label>
-              <input type="number" min={1} className="w-20 p-2 border rounded bg-zinc-900/60" value={headerRowIndex+1} disabled={loading} onChange={(e)=>{
+      <input type="number" min={1} className="w-20 p-2 border rounded bg-zinc-900/60" value={headerRowIndex+1} disabled={loading} onClick={(e)=>e.stopPropagation()} onChange={(e)=>{
                 const v = Math.max(1, parseInt(e.target.value||"1",10));
                 setHeaderRowIndex(v-1);
               }} />

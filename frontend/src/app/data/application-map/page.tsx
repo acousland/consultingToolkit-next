@@ -18,11 +18,11 @@ export default function DataApplicationMap() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
-  function update(list: string[], setter: (v: string[]) => void, i: number, val: string) {
-    setter(list.map((v, idx) => idx === i ? val : v));
+  function update(list: string[], setter: React.Dispatch<React.SetStateAction<string[]>>, i: number, val: string) {
+    setter(prev => prev.map((v, idx) => idx === i ? val : v));
   }
-  function add(setter: (v: string[]) => void) { setter(prev => [...prev, ""]); }
-  function remove(list: string[], setter: (v: string[]) => void, i: number) { setter(list.filter((_, idx) => idx !== i)); }
+  function add(setter: React.Dispatch<React.SetStateAction<string[]>>) { setter(prev => [...prev, ""]); }
+  function remove(list: string[], setter: React.Dispatch<React.SetStateAction<string[]>>, i: number) { setter(prev => prev.filter((_, idx) => idx !== i)); }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault(); setErr(""); setOut(null); setLoading(true);

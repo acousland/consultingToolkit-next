@@ -1,13 +1,13 @@
 # Use official Node.js image for Next.js
 FROM node:20-bookworm-slim AS deps
 WORKDIR /app
-COPY frontend/package.json frontend/package-lock.json* frontend/pnpm-lock.yaml* ./
+COPY package.json package-lock.json* pnpm-lock.yaml* ./
 RUN npm ci
 
 FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY frontend/ ./
+COPY . .
 # Ensure API base URL targets the docker service during build time
 ENV NEXT_PUBLIC_API_BASE_URL=http://api:8000
 RUN npm run build

@@ -20,52 +20,63 @@ Clicking any button updates `st.session_state.page` and reruns the app to displa
 
 ## 2. Pain Point Toolkit
 
-Overview page that explains the toolkit workflow and links to four analytical tools.
+Overview page that explains the toolkit workflow and links to analytical tools. (The original raw extraction step is now assumed to be performed externally; the toolkit begins with quality cleanup.)
 
-### 2.1 Pain Point Extraction
-**Purpose:** Extract distinct pain points from qualitative text.
+### 2.1 Pain Point Cleanup & Normalisation
+**Purpose:** Refine an initial raw list of pain points into a high‑quality canonical set suitable for downstream mapping (themes, impact, capability). Removes duplicates, merges near‑duplicates, enforces style rules and optionally enriches weak statements.
+
+**Typical Inputs**
+- Raw list (from external extraction) of 10–2,000 pain point sentences (may include noise: duplicates, fragments, overly specific metrics, tense inconsistencies, mixed granularity).
+- Optional domain / organisation context.
+- Optional custom style constraints (present tense, max length, verb restrictions, etc.).
 
 **UI Elements**
-- Breadcrumb: Home › Pain Point Toolkit › Pain Point Extraction
-- File uploader accepting CSV or Excel.
-- Multiselect to choose one or more text columns to concatenate.
-- Text input for additional context sent to the model.
-- Numeric input `chunk_size` (default 20) controlling batch size.
-- "Generate pain points" button.
-- Progress bar and status text while processing.
-- Results list and download button exporting `pain_points.xlsx`.
+- Breadcrumb: Home › Pain Point Toolkit › Pain Point Cleanup
+- Text area / list component of current raw pain points (prefilled from `pain_points` session state if present).
+- Summary chips: Total, Exact Duplicates, Near Duplicates (est), Merge Candidates.
+- Panels:
+  - Style Rules (checkboxes: Present tense; Remove metrics; Australian English; Length ≤ 28 words; Remove proper nouns unless essential).
+  - Normalisation Options (Merge near‑duplicates; Remove vague statements; Strengthen weak phrasing; Collapse overlapping scope).
+  - Advanced Thresholds (Similarity merge threshold slider 0.80 default; Weak sentence heuristic threshold 0.35 default).
+- Additional Context textarea.
+- Button "Analyse & Propose Cleanup".
+- Proposed Cleanup Table: Original | Action (Keep / Drop / Merge→ID / Rewrite) | Proposed | Group ID | Rationale.
+- Bulk accept/revert controls.
+- Button "Apply Accepted Changes".
+- Download buttons: Cleanup Report (Excel) and Final Clean Pain Points (Excel).
 
 **Processing Flow**
-1. Load uploaded spreadsheet using pandas.
-2. Concatenate selected text columns per row.
-3. Iterate over rows in chunks of `chunk_size`:
-   - Create prompt using `pain_point_extraction_prompt`:
-```
-You are a senior management consultant (MBA) and organisational psychologist (PhD).
-Extract every distinct pain point from the text and return them as clear, single sentences.
-Requirements:
-- Each pain point should be one complete, standalone sentence
-- Use Australian English with proper grammar
-- Focus on the core problem or challenge
-- Be specific about what the pain point is
-- Keep each sentence concise but descriptive
-- Do not include metrics or specific numbers unless essential to understanding the problem
+1. Preprocess: trim, normalise whitespace, remove exact duplicates (track provenance), embed unique sentences, build ANN index.
+2. Cluster similar sentences above threshold; limit cluster size (e.g. 12).
+3. Heuristics: flag weak, vague, metric‑laden or compound sentences.
+4. AI Canonicalisation: For each cluster, produce canonical sentence JSON; for weak singletons produce rewrite.
+5. Assemble proposal table with suggested actions & rationales.
+6. User review & adjust actions.
+7. Apply changes → produce final ordered canonical list stored in `clean_pain_points` (with merged originals metadata) and fallback list `pain_points` updated if desired.
 
-Format: Return only a simple list, one pain point per line, like this:
-Social media engagement rates are consistently below industry benchmarks across all platforms.
-Website conversion rates are underperforming expected targets.
-Customer data access is limited by system restrictions.
+**AI Prompt Sketches**
+- Cluster Canonicalisation JSON prompt (returns canonical, merged list, rationale).
+- Weak Sentence Rewrite (returns single improved sentence under style constraints).
 
-{additional_prompts}
+**Data Structures**
+`PainPointRecord = { id, original, group_id, proposed, action, rationale, merged_ids[] }`
 
-Text to analyse:
-{data}
-```
-   - Send to OpenAI via `model.invoke([HumanMessage(content=_input)])`.
-   - Strip markdown, bullet points and numbering from output and collect lines.
-4. Deduplicate pain points case‑insensitively.
-5. Persist list in `st.session_state['pain_points']`.
-6. Offer Excel download by writing DataFrame with one column "Pain Points" to `BytesIO` using `openpyxl`.
+**Excel Export**
+- Proposed sheet: ID, Original, Action, Proposed, Group_ID, Rationale, Merged_Originals
+- Summary sheet: total_raw, exact_duplicates_removed, groups_detected, merges_applied, rewrites, final_count
+
+**Edge Cases**
+- All unique: skip clustering; only rewrites executed.
+- Very large (>1500): batch cluster processing with progressive UI updates.
+- Over‑merge risk: enforce centroid variance & minimum distinct token set.
+- Invalid model JSON: attempt repair else flag manual review.
+
+**Performance**
+- Embedding batching; FAISS ANN for similarity; streaming cluster evaluation; parallel model calls within rate limits.
+
+**Outputs**
+- High quality canonical pain point list powering subsequent tools.
+- Audit provenance for each canonical sentence.
 
 ### 2.2 Pain Point Theme & Perspective Mapping
 **Purpose:** Categorise pain points into predefined themes and organisational perspectives.
@@ -180,6 +191,7 @@ PAIN_POINT_ID -> CAPABILITY_ID
 - Build text blocks of pain points and capabilities for each batch.
 - Invoke model; parse `PAIN_POINT_ID -> CAPABILITY_ID` pairs.
 - After all batches, join with capability text to display reference column, then export to Excel.
+
 
 ## 3. Capability Toolkit
 Overview page linking to capability description generator.

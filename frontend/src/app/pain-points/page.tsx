@@ -82,31 +82,35 @@ export default function PainPoints() {
           </div>
           <div className="p-4 sm:p-6">
             {tab === 'text' ? (
-              <div className="grid md:grid-cols-3 gap-6">
-                <div className="md:col-span-2 space-y-3">
+              <div className="space-y-4">
+                <div className="space-y-3">
                   <label className="block text-sm font-medium">Rows (one per line)</label>
                   <textarea className="w-full h-48 p-3 rounded-md border border-black/10 dark:border-white/10 bg-white dark:bg-black/40" value={rowsText} onChange={e=>setRowsText(e.target.value)} placeholder={"Example:\nCheckout crashes on voucher apply\nStaff re-enter data into CRM\n..."} />
-                  <button className="px-4 py-2 bg-indigo-600 text-white rounded-md disabled:opacity-50" disabled={loading || rows.length===0} onClick={runText}>
-                    {loading ? "Extracting..." : "Extract from text"}
-                  </button>
                 </div>
                 <div className="space-y-3">
                   <label className="block text-sm font-medium">Additional context</label>
                   <textarea className="w-full h-24 p-2 rounded-md border border-black/10 dark:border-white/10 bg-white dark:bg-black/40" value={extra} onChange={e=>setExtra(e.target.value)} placeholder="Optional: business, domain, audience..." />
-                  <label className="block text-sm font-medium">Chunk size</label>
-                  <input type="number" className="w-40 p-2 rounded-md border border-black/10 dark:border-white/10 bg-white dark:bg-black/40" value={chunk} onChange={e=>setChunk(parseInt(e.target.value||"20",10))} />
+                  <div className="flex flex-wrap items-end gap-6">
+                    <div>
+                      <label className="block text-sm font-medium">Chunk size</label>
+                      <input type="number" className="w-40 p-2 rounded-md border border-black/10 dark:border-white/10 bg-white dark:bg-black/40" value={chunk} onChange={e=>setChunk(parseInt(e.target.value||"20",10))} />
+                    </div>
+                    <button className="px-4 py-2 bg-indigo-600 text-white rounded-md disabled:opacity-50" disabled={loading || rows.length===0} onClick={runText}>
+                      {loading ? "Extracting..." : "Extract from text"}
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
               <form className="space-y-4" onSubmit={runFile}>
-                <div className="grid md:grid-cols-3 gap-6">
-                  <div className="md:col-span-2 space-y-3">
+                <div className="space-y-4">
+                  <div className="space-y-3">
                     <label className="block text-sm font-medium">Upload CSV/XLSX</label>
                     <ExcelPicker onChange={setExcel} />
                     {excel.headers.length > 0 && (
-                      <div>
+                      <div className="space-y-2">
                         <label className="block text-sm font-medium">Select columns to concatenate</label>
-                        <div className="flex flex-wrap gap-2 mt-1">
+                        <div className="flex flex-wrap gap-2">
                           {excel.headers.map((h)=> (
                             <label key={h} className={`px-2 py-1 rounded-md border border-black/10 dark:border-white/10 cursor-pointer ${selectedCols.includes(h)? 'bg-indigo-600 text-white' : 'bg-white dark:bg-black/40'}` }>
                               <input
@@ -127,11 +131,15 @@ export default function PainPoints() {
                   <div className="space-y-3">
                     <label className="block text-sm font-medium">Additional context</label>
                     <textarea className="w-full h-24 p-2 rounded-md border border-black/10 dark:border-white/10 bg-white dark:bg-black/40" value={extra} onChange={e=>setExtra(e.target.value)} />
-                    <label className="block text-sm font-medium">Chunk size</label>
-                    <input type="number" className="w-40 p-2 rounded-md border border-black/10 dark:border-white/10 bg-white dark:bg-black/40" value={chunk} onChange={e=>setChunk(parseInt(e.target.value||"20",10))} />
-                    <button className="px-4 py-2 bg-indigo-600 text-white rounded-md disabled:opacity-50" disabled={loading} type="submit">
-                      {loading ? "Uploading..." : "Extract from file"}
-                    </button>
+                    <div className="flex flex-wrap items-end gap-6">
+                      <div>
+                        <label className="block text-sm font-medium">Chunk size</label>
+                        <input type="number" className="w-40 p-2 rounded-md border border-black/10 dark:border-white/10 bg-white dark:bg-black/40" value={chunk} onChange={e=>setChunk(parseInt(e.target.value||"20",10))} />
+                      </div>
+                      <button className="px-4 py-2 bg-indigo-600 text-white rounded-md disabled:opacity-50" disabled={loading} type="submit">
+                        {loading ? "Uploading..." : "Extract from file"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </form>
