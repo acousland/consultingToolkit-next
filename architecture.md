@@ -1,6 +1,6 @@
 # Consulting Toolkit (Next.js + FastAPI) – Architecture
 
-Last updated: 2025-08-08
+Last updated: 2025-08-09
 
 ## High-level design
 
@@ -96,6 +96,37 @@ Edge API routes (proxy to FastAPI):
 - Output normalisation: Clean/dedupe server-side and return tabular JSON; XLSX variants are produced by the API for convenient exports.
 - Upload/download proxy: Next.js Edge API routes proxy multipart and binary responses to FastAPI (simplifies local dev and CORS); production can call FastAPI directly behind an API gateway.
 - Config via `.env`: Backend loads `.env` (python-dotenv); safe defaults allow heuristic fallbacks when LLM is disabled.
+
+## Reusable Excel data ingestion (frontend)
+
+Location:
+- `frontend/src/components/ExcelPicker.tsx` – low-level file + sheet + header row selector, parses CSV/XLSX client-side (cached) and exposes headers & preview rows; supports column highlighting.
+- `frontend/src/components/ExcelColumnSelector.tsx` – presentation for selecting columns in one of three modes: `id-text` (one ID + many text columns), `single-text` (one text column), `multi-text` (many text columns). Pure UI/state; oblivious of files.
+- `frontend/src/components/ExcelDataInput.tsx` – composite stateful component wiring picker + selector; emits a `StructuredExcelSelection` (`file`, `sheet`, `headers`, `idColumn?`, `textColumns[]`). Mode is injected so pages stay declarative.
+- `frontend/src/types/excel.ts` – shared discriminated union types.
+
+Rationale:
+- Consolidates previously duplicated per-page logic (themes mapping, capability mapping, impact estimation) for file parsing, header display, and column selection.
+- Reduces risk of inconsistent FormData construction and header-row off‑by‑one errors.
+- Enables future enhancements (validation, column type inference, async sampling) centrally.
+
+Behaviour highlights:
+- Local caching: The raw parsed workbook (first 200 preview rows) is memoised per File object to avoid reparsing on header row changes.
+- Local persistence: Per uploaded filename, the chosen `idColumn` + `textColumns` are stored in `localStorage` (keyed as e.g. `themes:filename.xlsx`) and rehydrated when the same file is re-selected.
+- Column highlighting: Parent pages can pass a map of header => semantic tag ("id" | "text") which `ExcelPicker` uses to style header pills; now largely delegated to `ExcelColumnSelector` state.
+- Submission: Pages build `FormData` with `file`, `id_column`, `text_columns` (JSON array), plus tool-specific fields (e.g. `additional_context`, `batch_size`).
+- Streaming XLSX download: For endpoints exposing `/...*.xlsx`, pages perform a `fetch` with `ReadableStream` consumption to update download progress (percent = received / content-length) before synthesizing a Blob for client save.
+
+Adoption status:
+- Migrated pages: pain point capability mapping, impact estimation, theme & perspective mapping.
+- Legacy (to migrate if needed): any remaining pages performing ad-hoc CSV/XLSX parsing (none currently critical).
+
+Extensibility:
+- To add a new tool needing file + column selection, use `<ExcelDataInput mode="id-text" />` (or another mode) and rely on the emitted `StructuredExcelSelection` to build API form payloads.
+- Additional modes (e.g., numeric metrics, date columns) can be added by extending `ExcelSelectionMode` and the switch in `ExcelColumnSelector`.
+
+Backend interplay:
+- Backend services (`services/pain_points.py`) perform authoritative cleaning, deduplication, chunking, and XLSX generation; frontend never trusts client cleaning beyond enabling user selection. Column names from the structured selection map directly to DataFrame columns server-side.
 
 ## Environment
 
