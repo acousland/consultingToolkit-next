@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { ExcelPicker, type ExcelSelection } from "@/components/ExcelPicker";
+import { ExcelDataInput } from "@/components/ExcelDataInput";
+import { StructuredExcelSelection } from "@/types/excel";
 
 interface ImpactRes {
   columns: string[];
@@ -16,8 +17,7 @@ export default function ImpactEstimation() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<ImpactRes | null>(null);
-  const [excel, setExcel] = useState<ExcelSelection>({ file: null, sheet: null, headers: [], preview: [] });
-  const [selectedCols, setSelectedCols] = useState<string[]>([]);
+  const [excel, setExcel] = useState<StructuredExcelSelection>({ file: null, sheet: null, headers: [], textColumns: [] });
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); setLoading(true); setError(""); setResult(null);
@@ -25,7 +25,7 @@ export default function ImpactEstimation() {
     const fd = new FormData();
   fd.append("file", excel.file);
     fd.append("id_column", idCol);
-  fd.append("text_columns", JSON.stringify((selectedCols.length? selectedCols : textCols.split(",").map(s=>s.trim()).filter(Boolean))));
+  fd.append("text_columns", JSON.stringify((excel.textColumns.length? excel.textColumns : textCols.split(",").map(s=>s.trim()).filter(Boolean))));
     fd.append("additional_context", context);
     fd.append("batch_size", String(batch));
   if (excel.sheet || sheet) fd.append("sheet_name", excel.sheet || sheet);
@@ -41,7 +41,7 @@ export default function ImpactEstimation() {
     const fd = new FormData();
   fd.append("file", excel.file);
     fd.append("id_column", idCol);
-  fd.append("text_columns", JSON.stringify((selectedCols.length? selectedCols : textCols.split(",").map(s=>s.trim()).filter(Boolean))));
+  fd.append("text_columns", JSON.stringify((excel.textColumns.length? excel.textColumns : textCols.split(",").map(s=>s.trim()).filter(Boolean))));
     fd.append("additional_context", context);
     fd.append("batch_size", String(batch));
   if (excel.sheet || sheet) fd.append("sheet_name", excel.sheet || sheet);
@@ -63,31 +63,11 @@ export default function ImpactEstimation() {
         <form id="impact-form" className="grid md:grid-cols-2 gap-6" onSubmit={onSubmit}>
           <div className="space-y-3">
             <label className="block text-sm font-medium">Upload CSV/XLSX</label>
-            <ExcelPicker onChange={setExcel} />
-            <label className="block text-sm font-medium">Pain Point ID column</label>
+            <ExcelDataInput mode="id-text" value={excel} onChange={setExcel} />
+            <label className="block text-sm font-medium mt-4">Pain Point ID column</label>
             <input type="text" className="w-full p-2 border rounded" value={idCol} onChange={e=>setIdCol(e.target.value)} placeholder="e.g. Pain_Point_ID" />
             <label className="block text-sm font-medium">Text columns (comma-separated)</label>
             <input type="text" className="w-full p-2 border rounded" value={textCols} onChange={e=>setTextCols(e.target.value)} placeholder="e.g. Title,Description" />
-            {excel.headers.length > 0 && (
-              <div>
-                <div className="text-sm text-gray-600">Or select from detected headers</div>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {excel.headers.map((h)=> (
-                    <label key={h} className={`px-2 py-1 border rounded cursor-pointer ${selectedCols.includes(h)? 'bg-blue-600 text-white' : 'bg-white dark:bg-black/40'}` }>
-                      <input
-                        type="checkbox"
-                        className="mr-1"
-                        checked={selectedCols.includes(h)}
-                        onChange={(e)=> {
-                          setSelectedCols((prev)=> e.target.checked ? [...prev, h] : prev.filter(x=>x!==h));
-                        }}
-                      />
-                      {h}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
             <label className="block text-sm font-medium">Sheet name (optional)</label>
             <input type="text" className="w-full p-2 border rounded" value={sheet} onChange={e=>setSheet(e.target.value)} />
           </div>
