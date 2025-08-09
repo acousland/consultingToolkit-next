@@ -38,7 +38,7 @@ export default function NavBar() {
         </div>
         <div className="flex items-center gap-2">
             <Link href="/admin" className="px-3 py-1.5 text-sm rounded-md border border-white/10 hover:bg-white/10">Admin</Link>
-            <Link href="/toolkits/pain-points" className="px-3 py-1.5 text-sm rounded-md bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow hover:opacity-95">Get Started</Link>
+            <Link href="/getting-started" className="px-3 py-1.5 text-sm rounded-md bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow hover:opacity-95">Get Started</Link>
         </div>
       </nav>
     </header>

@@ -23,7 +23,7 @@ export default function Home() {
           Consulting Toolkit
         </h1>
         <p className="text-lg md:text-xl text-gray-700 dark:text-gray-300 mt-3 max-w-2xl">
-          A modern suite for pain-point analysis, capability mapping, engagement planning, and strategy—built with Next.js + FastAPI.
+          An AI‑assisted workspace to surface organisational pain points, group them into themes, map capabilities & applications, plan engagements, align strategy, and accelerate data / information / AI solution design.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link href="/toolkits/pain-points" className="px-5 py-2.5 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow hover:opacity-95">
