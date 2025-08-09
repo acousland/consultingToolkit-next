@@ -102,6 +102,12 @@ Edge API routes (proxy to FastAPI):
 - Backend: `OPENAI_API_KEY` (optional; if missing, endpoints use heuristics), `OPENAI_MODEL` (default gpt-4o-mini), `OPENAI_TEMPERATURE` (default 0.2). `.env` is auto-loaded.
 - Frontend: `NEXT_PUBLIC_API_BASE_URL` (defaults to http://127.0.0.1:8000 for local dev; in Docker, set to http://api:8000).
 
+## Testing
+
+- Run `./scripts/test-all.sh` to execute backend Pytest suites and frontend ESLint checks.
+- Output from each stage is written to `test-results/` (`backend.log`, `frontend-install.log`, `frontend-lint.log`) for debugging.
+- The script exits non-zero on failure (allowing Pytest exit code `5` when no tests are collected) so CI/CD deployments clearly report failing steps.
+
 ## Open items / next steps
 
  - Refine toolkit prompts and add server-side validation.
