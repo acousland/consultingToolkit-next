@@ -157,5 +157,92 @@ Status legend: [ ] not started, [~] partial/in progress, [?] needs clarification
 - [ ] In-app diff viewer for Cleanup proposal vs final list.
 - [ ] Audit trail export (e.g., JSON with provenance for canonical pain points).
 
+## 11. Testing Deep Dive (Expanded Plan)
+
+### 11.1 Backend Unit Tests
+- [ ] pain_points: whitespace + dedupe normalisation (exact + near duplicates) logic.
+- [ ] pain_points: clustering function (similarity threshold edge cases: below, at, above 0.80) incl. small + large input sets.
+- [ ] pain_points: weak/vague/metric heuristic detectors (positive/negative examples table-driven tests).
+- [ ] pain_points: canonical merge logic merging clusters (ensure provenance + rationale preserved).
+- [ ] capability description parser (line format variations, trimming, duplicate capability names).
+- [ ] mapping output parsers (theme/perspective, capability, strategy) for malformed lines, missing IDs, extra whitespace.
+- [ ] impact estimation parser defaulting to Medium on invalid token.
+- [ ] data-application relationship parser (system of entry vs record) with ambiguity fallback.
+- [ ] Excel writer functions (sheets exist, column headers exact, row counts match input) using in-memory bytes.
+
+### 11.2 Backend Integration / Contract Tests
+- [ ] FastAPI TestClient happy-path for each endpoint (sample fixtures in `tests/fixtures/`).
+- [ ] Negative cases: missing required form fields, invalid file type, oversized batch request.
+- [ ] Response schema validation: ensure JSON keys subset of documented contract (Pydantic model tests).
+- [ ] Heuristic (LLM disabled) mode responses deterministic snapshot.
+- [ ] Multi-batch flow (e.g., theme mapping) accumulates results across batches.
+
+### 11.3 Prompt Snapshot & Regression
+- [ ] Snapshot current prompts (store canonical prompt strings under `tests/snapshots/prompts/`).
+- [ ] Test to diff runtime prompt assembly vs snapshot (fail on accidental drift; allow version bump via env var / update script).
+- [ ] Redact secrets/keys before snapshot.
+
+### 11.4 Parsing Robustness / Property-Based
+- [ ] Hypothesis-based tests for line parsers (random whitespace insertion, case variations, injected noise tokens) ensuring graceful skip not crash.
+- [ ] Fuzz test for capability mapping output enforcing stable parse or flagged error list length <= input.
+
+### 11.5 Performance & Scalability
+- [ ] Micro-benchmark clustering (N=100, 500, 1000) record ms & assert within budget threshold (configurable) – mark as non-blocking / perf profile.
+- [ ] Excel generation benchmark (capability mapping 2k rows) below time + memory envelope.
+- [ ] Concurrency test: simulate parallel requests (5–10) to batch endpoint; assert isolation (no cross-mixing state) & latency distribution.
+
+### 11.6 Security / Hardening Tests
+- [ ] File upload: reject > configured size (add size limit & test). 
+- [ ] File upload: reject disallowed MIME (e.g., .exe) with 415.
+- [ ] Prompt injection attempt strings ensure sanitisation / neutral handling.
+- [ ] Rate limit simulation (if implemented) returns 429 + retry-after.
+
+### 11.7 Reliability / Error Handling
+- [ ] Force model timeout -> heuristic fallback path returns structured error JSON (and still 200/appropriate code?).
+- [ ] Corrupted XLSX input triggers clean 400 error message.
+- [ ] Invalid JSON from model (simulate) triggers repair attempt & logs structured warning.
+
+### 11.8 Frontend Component Tests (React Testing Library)
+- [ ] ExcelPicker: header row change does NOT reopen file dialog (regression test for fixed bug).
+- [ ] ExcelDataInput modes (id-text / single-text / multi-text) produce expected `StructuredExcelSelection` shape.
+- [ ] Column persistence: re-selecting same filename hydrates prior selection.
+- [ ] Download progress indicator updates with streamed chunks (mock fetch with ReadableStream polyfill).
+- [ ] Error boundary / toast rendering (after implementing toast system).
+
+### 11.9 Frontend Integration / E2E (Playwright or Cypress)
+- [ ] Pain points theme mapping end-to-end: upload sample sheet -> select columns -> generate -> verify table rows.
+- [ ] Capability description generation: upload -> generate -> export file presence.
+- [ ] Route navigation via NavBar active state.
+- [ ] Accessibility: run axe-core on key pages (no violations above minor severity).
+- [ ] Mobile viewport snapshot for hero + getting started page (visual regression baseline).
+
+### 11.10 Coverage & Quality Gates
+- [ ] Configure pytest coverage (fail <80% backend lines; exclude migrations, __init__).
+- [ ] Configure frontend coverage via vitest / jest (target 70% lines; exclude Next.js generated files).
+- [ ] Add mutation testing (optional) with `mutmut` or `cosmic-ray` baseline (document thresholds only; not gating initially).
+- [ ] CI workflow: run backend unit + integration, frontend lint + unit, e2e (smoke subset) on PR.
+- [ ] Badge generation (coverage) in README after CI success.
+
+### 11.11 Test Data & Fixtures
+- [ ] Create `tests/fixtures/` with: small_pain_points.csv, large_pain_points.csv, capabilities.xlsx, applications.xlsx, strategies.xlsx, data_entities.xlsx, use_cases.xlsx.
+- [ ] Provide factory helpers for generating synthetic pain points with controlled duplication & length variance.
+- [ ] Provide JSON fixture for dossier / company context long text (used in summarisation tests).
+
+### 11.12 Tooling & DX
+- [ ] Add `make test` / `scripts/test-all.sh` update to include coverage flags & snapshot update command.
+- [ ] Pre-commit hook (ruff/black or eslint/prettier) plus basic type check (`tsc --noEmit`).
+- [ ] Watch mode for frontend tests (optional developer convenience).
+
+### 11.13 Documentation
+- [ ] TESTING.md: architecture (layers), how to run each test category, snapshot update workflow, performance test opt-in.
+- [ ] Update CONTRIBUTING.md referencing testing strategy & minimum expectations for new endpoints/components.
+
+### 11.14 Future / Stretch
+- [ ] Load test scenario (k6 or Locust) simulating concurrent batch mapping requests.
+- [ ] Chaos testing: inject random model failures / latency to assert graceful degradation.
+- [ ] Synthetic monitoring script (scheduled) hitting health + one mapping endpoint with heuristics mode.
+- [ ] Visual regression automation (Chromatic or Playwright trace compare).
+
+
 ---
 Generated: 2025-08-10
