@@ -26,6 +26,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full dark">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-full bg-black text-gray-100`}>
+  <div className="site-bg" aria-hidden="true" />
         <NavBar />
         <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-8">
           {children}

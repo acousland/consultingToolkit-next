@@ -5,7 +5,8 @@
   --foreground: #171717;
 }
 
-@theme inline {
+/* Expose font variables as CSS custom properties (Tailwind utilities reference them). */
+:root {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
@@ -14,3 +15,35 @@
 
 /* Theme colors are handled via Tailwind classes (bg-white dark:bg-black etc.).
   Remove overrides that prevented ThemeProvider from toggling. */
+
+/* --------------------------------------------------------------
+   Global background image hook
+   Drop an image at public/background.jpg (or override --app-bg-image) and
+   it will appear subtly behind all content. Adjust filters below as needed.
+---------------------------------------------------------------- */
+
+:root {
+  /* Default points to /background.jpg (safely ignored if missing). */
+  --app-bg-image: url(/background.jpg);
+  --app-bg-overlay: radial-gradient(at 20% 20%, rgba(99,102,241,0.18), transparent 60%),
+                    radial-gradient(at 80% 70%, rgba(56,189,248,0.18), transparent 65%),
+                    linear-gradient(to bottom right, rgba(0,0,0,0.85), rgba(0,0,0,0.9));
+}
+
+.site-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--app-bg-image), var(--app-bg-overlay);
+  background-size: cover, cover;
+  background-position: center, center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  pointer-events: none;
+  /* Subtle darkening & blending so content stays legible. */
+  filter: brightness(0.38) saturate(1.1);
+}
+
+@media (max-width: 640px) {
+  .site-bg { background-attachment: scroll; }
+}
