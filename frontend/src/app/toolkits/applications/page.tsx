@@ -3,6 +3,7 @@ export default function ApplicationsToolkit() {
     { href: "/applications/capabilities", label: "Application → Capability Mapping", disabled: false, emoji: "🔗" },
     { href: "/applications/logical-model", label: "Logical Application Model Generator", disabled: false, emoji: "🧱" },
     { href: "/applications/map", label: "Individual Application Mapping", disabled: false, emoji: "🧩" },
+  { href: "/applications/physical-logical", label: "Physical → Logical Application Mapping", disabled: false, emoji: "🧬" },
   ];
   return (
     <main>
