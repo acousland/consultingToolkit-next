@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routers.ai import router as ai_router
 import os, datetime
 
-BACKEND_VERSION = "0.1.2"
+BACKEND_VERSION = "0.1.3"
 GIT_COMMIT = os.getenv("GIT_COMMIT", "dev")
 BUILD_TIME = os.getenv("BUILD_TIME", datetime.datetime.utcnow().isoformat() + "Z")
 app = FastAPI(title="Consulting Toolkit API", version=BACKEND_VERSION)

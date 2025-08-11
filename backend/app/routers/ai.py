@@ -632,8 +632,13 @@ async def physical_logical_map_llm(payload: PhysicalLogicalMapRequest):
     import json, concurrent.futures
     # Pre-build logical catalogue text
     logical_catalogue = "\n".join(f"- {l.id}: {l.name} { (l.description or '').strip() }".strip() for l in logical)
-    # Normalized lookup map
-    logical_by_norm: Dict[str, LogicalAppItem] = { _norm_id(l.id): l for l in logical }
+    # Normalized lookup map - but also keep exact case mapping
+    logical_by_norm: Dict[str, LogicalAppItem] = {}
+    logical_by_exact: Dict[str, LogicalAppItem] = {}
+    for l in logical:
+        logical_by_exact[l.id] = l
+        norm_key = _norm_id(l.id)
+        logical_by_norm[norm_key] = l
     # Helper to call LLM for a single physical app
     from langchain_core.messages import HumanMessage
 
@@ -678,10 +683,12 @@ async def physical_logical_map_llm(payload: PhysicalLogicalMapRequest):
             logical_id = str(data.get('logical_id') or '').strip()
             uncertainty = bool(data.get('uncertainty'))
             rationale = str(data.get('rationale') or '').strip() or 'Model supplied no rationale.'
-            target = next((l for l in logical if l.id == logical_id), None)
+            # Try exact match first, then normalized lookup
+            target = logical_by_exact.get(logical_id)
             if target is None and logical_id:
                 # Try normalized lookup (case / zero padding differences)
-                target = logical_by_norm.get(_norm_id(logical_id))
+                norm_id = _norm_id(logical_id)
+                target = logical_by_norm.get(norm_id)
             mentioned_ids = set(re.findall(r'\b[A-Z]{2,}-\d+\b', rationale))
             mismatch = False; issues = []
             if target is None:
@@ -919,7 +926,13 @@ async def physical_logical_map_from_files_llm_stream(
         raise HTTPException(status_code=503, detail="LLM not configured for streaming mapping")
     use_llm = True
     logical_catalogue = "\n".join(f"- {l.id}: {l.name} {(l.description or '').strip()}".strip() for l in log_records)
-    logical_by_norm: Dict[str, LogicalAppItem] = { _norm_id(l.id): l for l in log_records }
+    # Build both exact and normalized lookup maps
+    logical_by_norm: Dict[str, LogicalAppItem] = {}
+    logical_by_exact: Dict[str, LogicalAppItem] = {}
+    for l in log_records:
+        logical_by_exact[l.id] = l
+        norm_key = _norm_id(l.id)
+        logical_by_norm[norm_key] = l
     hint = max_concurrency or 4
     max_workers = min(100, max(1, min(hint, len(phys_records))))
 
@@ -978,18 +991,22 @@ async def physical_logical_map_from_files_llm_stream(
             logical_id = ''
             uncertainty_flag = False
             rationale = 'Heuristic mapping (LLM not configured).'
-        # If model didn't give an id or heuristic path: choose best lexical
-        target = None; best_sim = -1.0; original_id = logical_id
-        for l in log_records:
-            sim = _pl_similarity(p_text, f"{l.name} {(l.description or '')}".strip())
-            if sim > best_sim:
-                best_sim = sim; target = l
-            if logical_id and l.id == logical_id:
-                target = l; best_sim = sim
-        if target is None and logical_id:
-            # Normalized lookup
-            norm = _norm_id(logical_id)
-            target = logical_by_norm.get(norm, target)
+        # Try exact match first, then fallback to similarity + normalized lookup
+        target = logical_by_exact.get(logical_id) if logical_id else None
+        best_sim = -1.0; original_id = logical_id
+        
+        if target is None:
+            # No exact match, try normalized lookup
+            if logical_id:
+                norm = _norm_id(logical_id)
+                target = logical_by_norm.get(norm)
+        
+        if target is None:
+            # Still no match, find best similarity
+            for l in log_records:
+                sim = _pl_similarity(p_text, f"{l.name} {(l.description or '')}".strip())
+                if sim > best_sim:
+                    best_sim = sim; target = l
         if target is None:
             return None
         # If chosen differs from provided id or rationale references other IDs, annotate & mark uncertainty
