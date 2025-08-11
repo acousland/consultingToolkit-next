@@ -299,7 +299,7 @@ class CleanupProposeRequest(BaseModel):
 async def cleanup_propose(request: CleanupProposeRequest):
     if not request.raw_points:
         return {"proposal": [], "summary": {"total_raw": 0}}
-    result = build_proposals(request.raw_points, request.options.model_dump())
+    result = await build_proposals(request.raw_points, request.options.model_dump())
     return result
 
 

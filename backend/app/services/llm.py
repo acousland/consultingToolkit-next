@@ -9,12 +9,11 @@ PAIN_POINT_MODEL = os.getenv("PAIN_POINT_MODEL", "gpt-5-mini")  # Upgraded to GP
 CONFIGURED_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", 0.2))
 
 def _supports_arbitrary_temperature(model: str) -> bool:
-    # GPT-5 models may have specific temperature requirements
-    # For now, assume GPT-5-mini supports configurable temperature
-    if "gpt-5-mini" in (model or "").lower():
-        return True
-    # Other GPT-5 models might require default temperature
-    return "gpt-5" not in (model or "").lower()
+    # GPT-5 models currently only support default temperature (1)
+    if "gpt-5" in (model or "").lower():
+        return False
+    # Other models like GPT-4 support configurable temperature
+    return True
 
 EFFECTIVE_TEMPERATURE = CONFIGURED_TEMPERATURE if _supports_arbitrary_temperature(MODEL) else 1.0
 

@@ -312,7 +312,7 @@ class ProposalRow:
     confidence: float = 0.0
 
 
-def build_proposals(raw_points: List[str], options: Dict[str, Any]) -> Dict[str, Any]:
+async def build_proposals(raw_points: List[str], options: Dict[str, Any]) -> Dict[str, Any]:
     """Main function to build pain point proposals using AI analysis."""
     context = options.get("context", "")
     
@@ -322,20 +322,12 @@ def build_proposals(raw_points: List[str], options: Dict[str, Any]) -> Dict[str,
     else:
         raw_text = str(raw_points)
     
-    # Use async event loop for AI calls
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
     try:
-        # Extract pain points using AI
-        extracted_points = loop.run_until_complete(
-            extract_pain_points_from_text(raw_text, context)
-        )
+        # Extract pain points using AI (now properly async)
+        extracted_points = await extract_pain_points_from_text(raw_text, context)
         
-        # Cluster similar pain points
-        clusters = loop.run_until_complete(
-            cluster_pain_points(extracted_points, context)
-        )
+        # Cluster similar pain points (now properly async)
+        clusters = await cluster_pain_points(extracted_points, context)
         
         # Convert to legacy format for frontend compatibility
         proposal = []
@@ -409,8 +401,22 @@ def build_proposals(raw_points: List[str], options: Dict[str, Any]) -> Dict[str,
             "summary": summary
         }
         
-    finally:
-        loop.close()
+    except Exception as e:
+        # Fallback on any error
+        print(f"Error in build_proposals: {e}")
+        return {
+            "proposal": [],
+            "summary": {
+                "total_raw": len(raw_points),
+                "ai_extracted": 0,
+                "clustered_groups": 0,
+                "business_pain_points": 0,
+                "technology_pain_points": 0,
+                "high_severity_issues": 0,
+                "ai_model_used": PAIN_POINT_MODEL,
+                "analysis_quality": f"Error: {str(e)}"
+            }
+        }
 
 
 def apply_actions(proposal_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
