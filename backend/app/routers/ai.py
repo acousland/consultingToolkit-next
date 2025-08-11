@@ -490,27 +490,405 @@ class CapItem(BaseModel):
 class AppCapMapRequest(BaseModel):
     applications: List[AppItem]
     capabilities: List[CapItem]
+    context: str = ""
+    batch_size: int = 10
+
+
+class AppCapMapResult(BaseModel):
+    application_id: str
+    application_name: str
+    capability_ids: List[str]
+    raw_response: str = ""
 
 
 class AppCapMapResponse(BaseModel):
-    application_id: str
-    capability_ids: List[str]
+    results: List[AppCapMapResult]
+    summary: dict
 
 
-@router.post("/applications/capabilities/map", response_model=List[AppCapMapResponse])
+@router.post("/applications/capabilities/map", response_model=AppCapMapResponse)
 async def map_applications_to_capabilities(payload: AppCapMapRequest):
+    """Map applications to capabilities using AI analysis"""
+    apps = payload.applications or []
     caps = payload.capabilities or []
-    if not caps:
-        return []
-    out: List[AppCapMapResponse] = []
-    for app in payload.applications:
-        desc = (app.description or "").lower()
-        matched = [c.id for c in caps if c.name.lower() in desc]
-        if not matched:
-            idx = sum(ord(ch) for ch in app.id) % len(caps)
-            matched = [caps[idx].id]
-        out.append(AppCapMapResponse(application_id=app.id, capability_ids=matched))
-    return out
+    context = payload.context.strip() if payload.context else ""
+    batch_size = min(max(payload.batch_size, 1), 50)  # Clamp between 1-50
+    
+    if not apps or not caps:
+        return AppCapMapResponse(results=[], summary={"total_mappings": 0, "applications_processed": 0, "capabilities_matched": 0, "no_mappings": 0})
+    
+    # Build capabilities text
+    capabilities_text = ""
+    for cap in caps:
+        capabilities_text += f"{cap.id}: {cap.name}\n"
+    
+    # Build context section
+    context_section = ""
+    if context:
+        context_section = f"\nAdditional Context:\n{context}\n"
+    
+    # Build prompt header
+    prompt_header = f"""You are an enterprise architect mapping software applications to a business-capability model.
+
+**How to reason (think silently, do not show your thinking):**
+1. Read each application's description carefully.
+2. Scan the full name *and* the detailed prose for functional verbs, nouns, and domain cues.
+3. Compare those cues to both the capability titles and their detailed descriptions.
+4. Look for synonyms and near-synonyms (e.g., "CRM" → "Customer Relationship Management").
+5. Only count a capability when the application directly delivers, automates, or materially
+   supports that business function. Ignore incidental or indirect links.
+
+**Output rules (show only these in your answer):**
+• Return just the Capability IDs, separated by commas, for each application.  
+• Preserve the exact application name/ID followed by a colon before the IDs.  
+• If no clear capability match exists, output `NONE`.  
+• Provide no explanations, qualifiers, or extra text.
+
+{context_section}
+
+Available Capabilities:
+{capabilities_text}
+
+Applications to map:
+"""
+
+    results = []
+    
+    # Process in batches
+    for i in range(0, len(apps), batch_size):
+        batch_apps = apps[i:i + batch_size]
+        
+        # Build batch text
+        batch_text = ""
+        for app in batch_apps:
+            batch_text += f"{app.id}: {app.name} - {app.description or ''}\n"
+        
+        # Get AI response
+        try:
+            if llm:
+                from langchain_core.messages import HumanMessage
+                response = llm.invoke([HumanMessage(content=prompt_header + batch_text)])
+                ai_response = getattr(response, 'content', '') or ''
+            else:
+                # Heuristic fallback
+                ai_response = ""
+                for app in batch_apps:
+                    desc_lower = (app.description or "").lower()
+                    matched_caps = [cap.id for cap in caps if cap.name.lower() in desc_lower]
+                    if matched_caps:
+                        ai_response += f"{app.id}: {', '.join(matched_caps[:3])}\n"
+                    else:
+                        ai_response += f"{app.id}: NONE\n"
+        
+        except Exception as e:
+            # Fallback to heuristic
+            ai_response = ""
+            for app in batch_apps:
+                ai_response += f"{app.id}: NONE\n"
+        
+        # Parse response
+        response_lines = ai_response.strip().split('\n')
+        
+        for j, app in enumerate(batch_apps):
+            capability_ids = []
+            raw_response = ""
+            
+            if j < len(response_lines):
+                line = response_lines[j].strip()
+                raw_response = line
+                
+                if ':' in line:
+                    _, cap_part = line.split(':', 1)
+                    cap_part = cap_part.strip()
+                    
+                    if cap_part.upper() != 'NONE' and cap_part:
+                        capability_ids = [cap.strip() for cap in cap_part.split(',') if cap.strip()]
+            
+            results.append(AppCapMapResult(
+                application_id=app.id,
+                application_name=app.name,
+                capability_ids=capability_ids,
+                raw_response=raw_response
+            ))
+    
+    # Calculate summary
+    total_mappings = sum(len(r.capability_ids) for r in results)
+    apps_processed = len(results)
+    unique_caps = len(set(cap_id for r in results for cap_id in r.capability_ids))
+    no_mappings = len([r for r in results if not r.capability_ids])
+    
+    summary = {
+        "total_mappings": total_mappings,
+        "applications_processed": apps_processed,
+        "capabilities_matched": unique_caps,
+        "no_mappings": no_mappings
+    }
+    
+    return AppCapMapResponse(results=results, summary=summary)
+
+
+@router.post("/applications/capabilities/map.xlsx")
+async def map_applications_to_capabilities_xlsx(payload: AppCapMapRequest):
+    """Export application-capability mapping results as Excel file"""
+    response = await map_applications_to_capabilities(payload)
+    
+    # Create DataFrames for export
+    mapping_data = []
+    for result in response.results:
+        if result.capability_ids:
+            for cap_id in result.capability_ids:
+                mapping_data.append({
+                    "Application ID": result.application_id,
+                    "Application Name": result.application_name,
+                    "Capability ID": cap_id,
+                    "Raw Response": result.raw_response
+                })
+        else:
+            mapping_data.append({
+                "Application ID": result.application_id,
+                "Application Name": result.application_name,
+                "Capability ID": "No mapping found",
+                "Raw Response": result.raw_response
+            })
+    
+    mapping_df = pd.DataFrame(mapping_data)
+    
+    # Summary data
+    summary_data = {
+        "Metric": ["Total Mappings", "Applications Processed", "Capabilities Matched", "No Mappings Found"],
+        "Count": [
+            response.summary["total_mappings"],
+            response.summary["applications_processed"], 
+            response.summary["capabilities_matched"],
+            response.summary["no_mappings"]
+        ]
+    }
+    summary_df = pd.DataFrame(summary_data)
+    
+    # Applications overview
+    app_counts = mapping_df.groupby(["Application ID", "Application Name"]).size().reset_index(name="Mapping Count")
+    
+    # Generate Excel file
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        mapping_df.to_excel(writer, sheet_name='Application Mappings', index=False)
+        summary_df.to_excel(writer, sheet_name='Summary', index=False)
+        app_counts.to_excel(writer, sheet_name='Applications Overview', index=False)
+    
+    xbytes = output.getvalue()
+    return Response(
+        content=xbytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=application_capability_mapping.xlsx"}
+    )
+
+
+@router.post("/applications/capabilities/map-files")
+async def map_applications_to_capabilities_files(
+    applications_file: UploadFile = File(...),
+    applications_sheet: str = Form(""),
+    applications_id_column: str = Form(...),
+    applications_text_columns: str = Form(...),
+    capabilities_file: UploadFile = File(...),
+    capabilities_sheet: str = Form(""),
+    capabilities_id_column: str = Form(...),
+    capabilities_text_columns: str = Form(...),
+    additional_context: str = Form(""),
+    batch_size: int = Form(10),
+):
+    """Map applications to capabilities using uploaded Excel files"""
+    import json
+    import pandas as pd
+    from io import BytesIO
+    
+    try:
+        # Parse text columns
+        app_text_cols = json.loads(applications_text_columns)
+        cap_text_cols = json.loads(capabilities_text_columns)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON in text_columns: {e}")
+    
+    try:
+        # Read applications file
+        app_content = await applications_file.read()
+        app_sheet_name = applications_sheet if applications_sheet else 0
+        app_df = pd.read_excel(BytesIO(app_content), sheet_name=app_sheet_name)
+        
+        # Read capabilities file
+        cap_content = await capabilities_file.read()
+        cap_sheet_name = capabilities_sheet if capabilities_sheet else 0
+        cap_df = pd.read_excel(BytesIO(cap_content), sheet_name=cap_sheet_name)
+        
+        # Validate columns exist
+        if applications_id_column not in app_df.columns:
+            raise HTTPException(status_code=400, detail=f"ID column '{applications_id_column}' not found in applications file")
+        
+        if capabilities_id_column not in cap_df.columns:
+            raise HTTPException(status_code=400, detail=f"ID column '{capabilities_id_column}' not found in capabilities file")
+        
+        for col in app_text_cols:
+            if col not in app_df.columns:
+                raise HTTPException(status_code=400, detail=f"Text column '{col}' not found in applications file")
+        
+        for col in cap_text_cols:
+            if col not in cap_df.columns:
+                raise HTTPException(status_code=400, detail=f"Text column '{col}' not found in capabilities file")
+        
+        # Transform to expected format
+        applications = []
+        for _, row in app_df.iterrows():
+            app_id = str(row[applications_id_column])
+            
+            # Combine text from multiple columns
+            text_parts = []
+            for col in app_text_cols:
+                val = row[col]
+                if pd.notna(val):
+                    text_parts.append(str(val))
+            
+            combined_text = " | ".join(text_parts)
+            
+            applications.append({
+                "id": app_id,
+                "name": combined_text[:100] + "..." if len(combined_text) > 100 else combined_text,
+                "description": combined_text
+            })
+        
+        capabilities = []
+        for _, row in cap_df.iterrows():
+            cap_id = str(row[capabilities_id_column])
+            
+            # Combine text from multiple columns
+            text_parts = []
+            for col in cap_text_cols:
+                val = row[col]
+                if pd.notna(val):
+                    text_parts.append(str(val))
+            
+            combined_text = " | ".join(text_parts)
+            
+            capabilities.append({
+                "id": cap_id,
+                "name": combined_text[:100] + "..." if len(combined_text) > 100 else combined_text,
+                "description": combined_text
+            })
+        
+        # Call the existing mapping function
+        payload = AppCapMapRequest(
+            applications=applications,
+            capabilities=capabilities,
+            context=additional_context,
+            batch_size=batch_size
+        )
+        
+        return await map_applications_to_capabilities(payload)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File processing error: {str(e)}")
+
+
+@router.post("/applications/capabilities/map-files.xlsx")
+async def map_applications_to_capabilities_files_xlsx(
+    applications_file: UploadFile = File(...),
+    applications_sheet: str = Form(""),
+    applications_id_column: str = Form(...),
+    applications_text_columns: str = Form(...),
+    capabilities_file: UploadFile = File(...),
+    capabilities_sheet: str = Form(""),
+    capabilities_id_column: str = Form(...),
+    capabilities_text_columns: str = Form(...),
+    additional_context: str = Form(""),
+    batch_size: int = Form(10),
+):
+    """Export application-capability mapping results as Excel file using uploaded files"""
+    import json
+    import pandas as pd
+    from io import BytesIO
+    
+    try:
+        # Parse text columns
+        app_text_cols = json.loads(applications_text_columns)
+        cap_text_cols = json.loads(capabilities_text_columns)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON in text_columns: {e}")
+    
+    try:
+        # Read applications file
+        app_content = await applications_file.read()
+        app_sheet_name = applications_sheet if applications_sheet else 0
+        app_df = pd.read_excel(BytesIO(app_content), sheet_name=app_sheet_name)
+        
+        # Read capabilities file
+        cap_content = await capabilities_file.read()
+        cap_sheet_name = capabilities_sheet if capabilities_sheet else 0
+        cap_df = pd.read_excel(BytesIO(cap_content), sheet_name=cap_sheet_name)
+        
+        # Validate columns exist
+        if applications_id_column not in app_df.columns:
+            raise HTTPException(status_code=400, detail=f"ID column '{applications_id_column}' not found in applications file")
+        
+        if capabilities_id_column not in cap_df.columns:
+            raise HTTPException(status_code=400, detail=f"ID column '{capabilities_id_column}' not found in capabilities file")
+        
+        for col in app_text_cols:
+            if col not in app_df.columns:
+                raise HTTPException(status_code=400, detail=f"Text column '{col}' not found in applications file")
+        
+        for col in cap_text_cols:
+            if col not in cap_df.columns:
+                raise HTTPException(status_code=400, detail=f"Text column '{col}' not found in capabilities file")
+        
+        # Transform to expected format
+        applications = []
+        for _, row in app_df.iterrows():
+            app_id = str(row[applications_id_column])
+            
+            # Combine text from multiple columns
+            text_parts = []
+            for col in app_text_cols:
+                val = row[col]
+                if pd.notna(val):
+                    text_parts.append(str(val))
+            
+            combined_text = " | ".join(text_parts)
+            
+            applications.append({
+                "id": app_id,
+                "name": combined_text[:100] + "..." if len(combined_text) > 100 else combined_text,
+                "description": combined_text
+            })
+        
+        capabilities = []
+        for _, row in cap_df.iterrows():
+            cap_id = str(row[capabilities_id_column])
+            
+            # Combine text from multiple columns
+            text_parts = []
+            for col in cap_text_cols:
+                val = row[col]
+                if pd.notna(val):
+                    text_parts.append(str(val))
+            
+            combined_text = " | ".join(text_parts)
+            
+            capabilities.append({
+                "id": cap_id,
+                "name": combined_text[:100] + "..." if len(combined_text) > 100 else combined_text,
+                "description": combined_text
+            })
+        
+        # Call the existing Excel export function
+        payload = AppCapMapRequest(
+            applications=applications,
+            capabilities=capabilities,
+            context=additional_context,
+            batch_size=batch_size
+        )
+        
+        return await map_applications_to_capabilities_xlsx(payload)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File processing error: {str(e)}")
 
 
 class LogicalAppModelRequest(BaseModel):
