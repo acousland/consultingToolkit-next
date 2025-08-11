@@ -290,11 +290,16 @@ class CleanupProposalResponse(BaseModel):
     summary: Dict[str, Any]
 
 
+class CleanupProposeRequest(BaseModel):
+    raw_points: List[str]
+    options: CleanupOptions
+
+
 @router.post("/pain-points/cleanup/propose", response_model=CleanupProposalResponse)
-async def cleanup_propose(raw_points: List[str], options: CleanupOptions):  # body expects JSON array + options
-    if not raw_points:
+async def cleanup_propose(request: CleanupProposeRequest):
+    if not request.raw_points:
         return {"proposal": [], "summary": {"total_raw": 0}}
-    result = build_proposals(raw_points, options.model_dump())
+    result = build_proposals(request.raw_points, request.options.model_dump())
     return result
 
 
