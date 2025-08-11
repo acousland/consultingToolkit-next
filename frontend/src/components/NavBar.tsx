@@ -29,12 +29,13 @@ export default function NavBar() {
         </div>
         <div className="hidden md:flex items-center gap-1">
           <NavLink href="/" label="Home" />
-          <NavLink href="/toolkits/pain-points" label="Pain Points" />
+          <NavLink href="/toolkits/business" label="Business" />
           <NavLink href="/toolkits/capabilities" label="Capabilities" />
           <NavLink href="/toolkits/applications" label="Applications" />
           <NavLink href="/toolkits/data-ai" label="Data & AI" />
           <NavLink href="/toolkits/engagement" label="Engagement" />
           <NavLink href="/toolkits/strategy" label="Strategy" />
+          <NavLink href="/toolkits/intelligence" label="Intelligence" />
         </div>
         <div className="flex items-center gap-2">
             <Link href="/admin" className="px-3 py-1.5 text-sm rounded-md border border-white/10 hover:bg-white/10">Admin</Link>

@@ -2,12 +2,13 @@ import Link from "next/link";
 
 export default function Home() {
   const cards = [
-    { title: "Pain Point Toolkit", emoji: "🔍", desc: "Identify, categorise, and map organisational challenges.", href: "/toolkits/pain-points", cta: "Open", badge: "New" },
+    { title: "Business Toolkit", emoji: "🔍", desc: "Identify, categorise, and map organisational challenges and opportunities.", href: "/toolkits/business", cta: "Open", badge: "New" },
     { title: "Capability Toolkit", emoji: "📝", desc: "Design and refine organisational capabilities.", href: "/toolkits/capabilities", cta: "Open" },
     { title: "Applications Toolkit", emoji: "🏗️", desc: "Map and analyse the technology landscape.", href: "/toolkits/applications", cta: "Open" },
     { title: "Data, Information, and AI", emoji: "📊", desc: "Design data models, information architecture, and AI solutions.", href: "/toolkits/data-ai", cta: "Open" },
     { title: "Engagement Planning", emoji: "📅", desc: "Plan and structure client engagements.", href: "/toolkits/engagement", cta: "Open" },
     { title: "Strategy & Motivations", emoji: "🎯", desc: "Align strategies with organisational capabilities.", href: "/toolkits/strategy", cta: "Open" },
+    { title: "Intelligence Toolkit", emoji: "🧠", desc: "Analyze trends, insights, and intelligence patterns across organizational data.", href: "/toolkits/intelligence", cta: "Open", badge: "Coming Soon" },
   ];
 
   return (
@@ -26,7 +27,7 @@ export default function Home() {
           An AI‑assisted workspace to surface organisational pain points, group them into themes, map capabilities & applications, plan engagements, align strategy, and accelerate data / information / AI solution design.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link href="/toolkits/pain-points" className="px-5 py-2.5 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow hover:opacity-95">
+          <Link href="/toolkits/business" className="px-5 py-2.5 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow hover:opacity-95">
             Get Started
           </Link>
           <Link href="/admin" className="px-5 py-2.5 rounded-xl border border-black/10 dark:border-white/15 hover:bg-black/5 dark:hover:bg-white/10">

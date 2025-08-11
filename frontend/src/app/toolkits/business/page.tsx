@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export default function PainPointToolkit() {
+export default function BusinessToolkit() {
   const links = [
     { href: "/pain-points", label: "Pain Point Cleanup", emoji: "🧩" },
     { href: "/pain-points/themes", label: "Theme & Perspective Mapping", emoji: "🗂️" },
@@ -15,8 +15,8 @@ export default function PainPointToolkit() {
             <div className="absolute -top-24 -left-20 h-72 w-72 rounded-full bg-gradient-to-br from-indigo-500/20 to-violet-500/20 blur-3xl" />
             <div className="absolute -bottom-24 -right-20 h-72 w-72 rounded-full bg-gradient-to-tr from-sky-500/20 to-emerald-500/20 blur-3xl" />
           </div>
-          <h1 className="text-4xl md:text-5xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-300 via-violet-300 to-rose-300">Pain Point Toolkit</h1>
-          <p className="text-lg md:text-xl text-gray-300 mt-3 max-w-2xl">Identify, categorise, and map organisational challenges.</p>
+          <h1 className="text-4xl md:text-5xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-300 via-violet-300 to-rose-300">Business Toolkit</h1>
+          <p className="text-lg md:text-xl text-gray-300 mt-3 max-w-2xl">Identify, categorise, and map organisational challenges and business opportunities.</p>
         </div>
         <section className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
           {links.map((l) => (

@@ -13,7 +13,7 @@ export default function GettingStartedPage() {
     },
     {
       title: "2. Clean & structure",
-      body: "Use the Pain Point Toolkit to normalise, deduplicate, and chunk long text. Pick ID + text columns with the Excel input component.",
+      body: "Use the Business Toolkit to normalise, deduplicate, and chunk long text. Pick ID + text columns with the Excel input component.",
     },
     {
       title: "3. Generate insights",
@@ -30,12 +30,13 @@ export default function GettingStartedPage() {
   ];
 
   const toolkits = [
-    { href: "/toolkits/pain-points", label: "Pain Point Toolkit", desc: "Structured extraction, theming, capability & impact mapping." },
+    { href: "/toolkits/business", label: "Business Toolkit", desc: "Structured extraction, theming, capability & impact mapping." },
     { href: "/toolkits/capabilities", label: "Capability Toolkit", desc: "Generate concise, consistent capability descriptions." },
     { href: "/toolkits/applications", label: "Applications Toolkit", desc: "Relate applications to capabilities & derive logical groupings." },
     { href: "/toolkits/data-ai", label: "Data, Information & AI", desc: "Conceptual data models, data→application mapping, AI use cases." },
     { href: "/toolkits/engagement", label: "Engagement Planning", desc: "Structure engagement touchpoints and artefacts." },
     { href: "/toolkits/strategy", label: "Strategy & Motivations", desc: "Map strategies to capabilities and synthesise tactics." },
+    { href: "/toolkits/intelligence", label: "Intelligence Toolkit", desc: "Analyze trends, insights, and intelligence patterns across organizational data." },
   ];
 
   return (
@@ -52,8 +53,8 @@ export default function GettingStartedPage() {
           The Consulting Toolkit accelerates early discovery & shaping: transforming raw lists of issues, systems, and ideas into structured artefacts—capabilities, themes, impacts, strategies, data models—that inform roadmaps and investment cases.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link href="/toolkits/pain-points" className="px-5 py-2.5 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow hover:opacity-95">
-            Start with Pain Points
+          <Link href="/toolkits/business" className="px-5 py-2.5 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow hover:opacity-95">
+            Start with Business
           </Link>
           <Link href="/" className="px-5 py-2.5 rounded-xl border border-white/15 hover:bg-white/10">
             Home
