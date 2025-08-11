@@ -2,12 +2,10 @@ import Link from "next/link";
 
 export default function Home() {
   const cards = [
-    { title: "Business Toolkit", emoji: "🔍", desc: "Identify, categorise, and map organisational challenges and opportunities.", href: "/toolkits/business", cta: "Open", badge: "New" },
-    { title: "Capability Toolkit", emoji: "📝", desc: "Design and refine organisational capabilities.", href: "/toolkits/capabilities", cta: "Open" },
+    { title: "Business Toolkit", emoji: "🔍", desc: "Pain point analysis, capability management, and strategic alignment tools.", href: "/toolkits/business", cta: "Open" },
     { title: "Applications Toolkit", emoji: "🏗️", desc: "Map and analyse the technology landscape.", href: "/toolkits/applications", cta: "Open" },
     { title: "Data, Information, and AI", emoji: "📊", desc: "Design data models, information architecture, and AI solutions.", href: "/toolkits/data-ai", cta: "Open" },
     { title: "Engagement Planning", emoji: "📅", desc: "Plan and structure client engagements.", href: "/toolkits/engagement", cta: "Open" },
-    { title: "Strategy & Motivations", emoji: "🎯", desc: "Align strategies with organisational capabilities.", href: "/toolkits/strategy", cta: "Open" },
     { title: "Intelligence Toolkit", emoji: "🧠", desc: "Analyze trends, insights, and intelligence patterns across organizational data.", href: "/toolkits/intelligence", cta: "Open", badge: "Coming Soon" },
   ];
 

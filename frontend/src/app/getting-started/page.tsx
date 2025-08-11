@@ -31,11 +31,11 @@ export default function GettingStartedPage() {
 
   const toolkits = [
     { href: "/toolkits/business", label: "Business Toolkit", desc: "Structured extraction, theming, capability & impact mapping." },
-    { href: "/toolkits/capabilities", label: "Capability Toolkit", desc: "Generate concise, consistent capability descriptions." },
+    { href: "/toolkits/business", label: "Business Toolkit", desc: "Comprehensive pain point analysis, capability management, and strategic alignment." },
     { href: "/toolkits/applications", label: "Applications Toolkit", desc: "Relate applications to capabilities & derive logical groupings." },
     { href: "/toolkits/data-ai", label: "Data, Information & AI", desc: "Conceptual data models, data→application mapping, AI use cases." },
     { href: "/toolkits/engagement", label: "Engagement Planning", desc: "Structure engagement touchpoints and artefacts." },
-    { href: "/toolkits/strategy", label: "Strategy & Motivations", desc: "Map strategies to capabilities and synthesise tactics." },
+
     { href: "/toolkits/intelligence", label: "Intelligence Toolkit", desc: "Analyze trends, insights, and intelligence patterns across organizational data." },
   ];
 

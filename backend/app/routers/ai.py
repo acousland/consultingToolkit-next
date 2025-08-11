@@ -910,22 +910,168 @@ async def logical_application_model(payload: LogicalAppModelRequest):
 
 
 class IndividualAppMapRequest(BaseModel):
+    application_name: str
+    application_id: Optional[str] = ""
     application_description: str
+    additional_context: Optional[str] = ""
     capabilities: List[CapItem]
 
 
 class IndividualAppMapResponse(BaseModel):
-    capability_ids: List[str]
+    analysis: str
+    application_summary: dict
+    raw_response: str
 
 
 @router.post("/applications/map", response_model=IndividualAppMapResponse)
 async def individual_application_map(payload: IndividualAppMapRequest):
-    caps = payload.capabilities or []
-    desc = payload.application_description.lower()
-    matched = [c.id for c in caps if c.name.lower() in desc]
-    if not matched and caps:
-        matched = [caps[0].id]
-    return {"capability_ids": matched}
+    """Generate AI-powered capability mapping for individual application with confidence tiers"""
+    
+    # Prepare capabilities list for AI
+    capabilities_list = []
+    for cap in payload.capabilities:
+        capabilities_list.append(f"- {cap.id}: {cap.name}")
+    
+    capabilities_text = "\n".join(capabilities_list)
+    
+    # Create application info
+    app_display_id = f" (ID: {payload.application_id})" if payload.application_id.strip() else ""
+    app_info = f"Application: {payload.application_name}{app_display_id}\nDescription: {payload.application_description}"
+    
+    # Build context section
+    context_section = f"Additional Context: {payload.additional_context}\n\n" if payload.additional_context.strip() else ""
+    
+    # Create AI prompt using spec template
+    prompt = f"""You are an expert enterprise architect specialising in capability mapping and application portfolio management.
+
+Your task: Analyse the application and identify which capabilities from the provided framework are most relevant.
+
+{context_section}Application to Analyse:
+{app_info}
+
+Available Capabilities:
+{capabilities_text}
+
+Instructions:
+1. Analyse the application's functions, purpose, and characteristics
+2. Identify which capabilities from the framework are most relevant to this application
+3. Consider both direct functional alignment and supporting capabilities
+4. An application can map to multiple capabilities (0 to many)
+5. Provide a confidence level for each mapping (High, Medium, Low)
+6. Return your response in this exact format:
+
+**Primary Capabilities** (High Confidence):
+- CAPABILITY_ID: Brief explanation of relevance
+
+**Secondary Capabilities** (Medium Confidence):
+- CAPABILITY_ID: Brief explanation of relevance
+
+**Potential Capabilities** (Low Confidence):
+- CAPABILITY_ID: Brief explanation of relevance
+
+If no capabilities are relevant, respond with:
+**No Direct Capability Mappings Found**
+
+Analysis:"""
+
+    try:
+        # Call AI model
+        from langchain_core.messages import HumanMessage
+        
+        if not llm:
+            raise HTTPException(status_code=503, detail="LLM service not available")
+        
+        message = HumanMessage(content=prompt)
+        response = llm.invoke([message])
+        ai_response = response.content.strip()
+        
+        # Prepare application summary
+        app_summary = {
+            "name": payload.application_name,
+            "id": payload.application_id,
+            "description": payload.application_description,
+            "total_capabilities": len(payload.capabilities),
+            "context_provided": bool(payload.additional_context.strip())
+        }
+        
+        return IndividualAppMapResponse(
+            analysis=ai_response,
+            application_summary=app_summary,
+            raw_response=ai_response
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating capability mapping: {str(e)}")
+
+
+@router.post("/applications/map-file")
+async def individual_application_map_file(
+    capabilities_file: UploadFile = File(...),
+    capabilities_sheet: str = Form(""),
+    capabilities_id_column: str = Form(...),
+    capabilities_text_columns: str = Form(...),
+    application_name: str = Form(...),
+    application_id: str = Form(""),
+    application_description: str = Form(...),
+    additional_context: str = Form(""),
+):
+    """Individual application mapping using uploaded capabilities file"""
+    import json
+    import pandas as pd
+    from io import BytesIO
+    
+    try:
+        # Parse text columns
+        cap_text_cols = json.loads(capabilities_text_columns)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON in text_columns: {e}")
+    
+    try:
+        # Read capabilities file
+        cap_content = await capabilities_file.read()
+        cap_sheet_name = capabilities_sheet if capabilities_sheet else 0
+        cap_df = pd.read_excel(BytesIO(cap_content), sheet_name=cap_sheet_name)
+        
+        # Validate columns exist
+        if capabilities_id_column not in cap_df.columns:
+            raise HTTPException(status_code=400, detail=f"ID column '{capabilities_id_column}' not found in capabilities file")
+        
+        for col in cap_text_cols:
+            if col not in cap_df.columns:
+                raise HTTPException(status_code=400, detail=f"Text column '{col}' not found in capabilities file")
+        
+        # Transform to expected format
+        capabilities = []
+        for _, row in cap_df.iterrows():
+            cap_id = str(row[capabilities_id_column])
+            
+            # Combine text from multiple columns
+            text_parts = []
+            for col in cap_text_cols:
+                val = row[col]
+                if pd.notna(val):
+                    text_parts.append(str(val))
+            
+            combined_text = " | ".join(text_parts)
+            
+            capabilities.append({
+                "id": cap_id,
+                "name": combined_text
+            })
+        
+        # Call the existing mapping function
+        payload = IndividualAppMapRequest(
+            application_name=application_name,
+            application_id=application_id,
+            application_description=application_description,
+            additional_context=additional_context,
+            capabilities=[CapItem(**cap) for cap in capabilities]
+        )
+        
+        return await individual_application_map(payload)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File processing error: {str(e)}")
 
 
 # ---------------------------------------------------------------------------
