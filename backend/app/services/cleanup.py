@@ -24,8 +24,8 @@ import pandas as pd
 from .llm import get_pain_point_llm
 from langchain_core.messages import HumanMessage
 
-# Use GPT-4o-mini by default, but allow override to GPT-5-mini for this specific use case
-PAIN_POINT_MODEL = os.getenv("PAIN_POINT_MODEL", "gpt-4o-mini")
+# Use GPT-5-mini by default for superior analysis capabilities
+PAIN_POINT_MODEL = os.getenv("PAIN_POINT_MODEL", "gpt-5-mini")
 
 @dataclass
 class ExtractedPainPoint:
@@ -70,18 +70,19 @@ async def extract_pain_points_from_text(raw_text: str, context: str = "") -> Lis
             ) for i, line in enumerate(lines)
         ]
     
-    # Enhanced prompt for GPT-4o-mini/GPT-5-mini
-    prompt = f"""You are an expert business analyst and technology consultant. Your task is to extract and analyze pain points from the provided text.
+    # Enhanced prompt optimized for GPT-5-mini capabilities
+    prompt = f"""You are an expert business analyst and technology consultant powered by GPT-5-mini. Your task is to extract and analyze pain points from the provided text with superior intelligence and business acumen.
 
 CONTEXT: {context}
 
-INSTRUCTIONS:
+ADVANCED INSTRUCTIONS:
 1. Identify genuine pain points - problems that cause frustration, inefficiency, or prevent desired outcomes
 2. Distinguish between business pain points (process, strategy, people issues) and technology pain points (system failures, poor UX, technical limitations)
-3. Extract the underlying problem, not just symptoms
-4. Assess severity based on potential business impact
-5. Identify likely stakeholders affected
-6. Determine root causes where possible
+3. Extract the underlying problem, not just symptoms - demonstrate deep analytical thinking
+4. Assess severity based on potential business impact using sophisticated business judgment
+5. Identify likely stakeholders affected with nuanced understanding of organizational dynamics
+6. Determine root causes using advanced reasoning and business knowledge
+7. Consider interconnected impacts and systemic issues
 
 TEXT TO ANALYZE:
 {raw_text}
@@ -98,20 +99,20 @@ Return your analysis as a JSON array where each pain point has this structure:
   "confidence": 0.0-1.0 confidence in this analysis
 }}
 
-EXAMPLE:
+EXAMPLE (demonstrating GPT-5-mini's enhanced capabilities):
 If the text says "The system takes forever to load reports"
 Extract: {{
   "original_text": "The system takes forever to load reports",
-  "extracted_pain_point": "Report generation system has poor performance causing productivity delays",
+  "extracted_pain_point": "Report generation system has poor performance causing productivity delays and decision-making bottlenecks",
   "category": "technology",
   "severity": "high",
-  "stakeholders": ["managers", "analysts", "executives"],
-  "root_cause": "Inefficient database queries or inadequate server resources",
-  "impact_description": "Delayed decision-making, reduced productivity, user frustration",
-  "confidence": 0.85
+  "stakeholders": ["managers", "analysts", "executives", "data consumers"],
+  "root_cause": "Likely database optimization issues, inadequate server resources, or inefficient query architecture",
+  "impact_description": "Delayed decision-making, reduced productivity, user frustration, potential revenue impact from slow business intelligence",
+  "confidence": 0.92
 }}
 
-Focus on extracting real problems, not just complaints. Be thorough but precise."""
+Focus on extracting real problems with sophisticated business understanding. Be thorough, precise, and demonstrate advanced analytical capabilities."""
 
     try:
         # Use async execution for better performance
@@ -203,32 +204,34 @@ async def cluster_pain_points(pain_points: List[ExtractedPainPoint], context: st
         for pp in pain_points
     ])
     
-    prompt = f"""You are analyzing pain points to identify clusters of related issues. Group pain points that address the same underlying problem or system.
+    prompt = f"""You are analyzing pain points to identify clusters of related issues using GPT-5-mini's advanced reasoning capabilities. Group pain points that address the same underlying problem or system with sophisticated business understanding.
 
 CONTEXT: {context}
 
 PAIN POINTS TO CLUSTER:
 {pain_points_text}
 
-INSTRUCTIONS:
+ADVANCED CLUSTERING INSTRUCTIONS:
 1. Group pain points that relate to the same system, process, or underlying issue
-2. Create a representative statement that captures the essence of each cluster
-3. Determine the highest severity in each cluster
-4. Suggest specific actions for each cluster
-5. Focus on semantic similarity, not just text similarity
+2. Create a representative statement that captures the essence of each cluster with nuanced understanding
+3. Determine the highest severity in each cluster with sophisticated risk assessment
+4. Suggest specific, actionable recommendations for each cluster
+5. Focus on semantic similarity and business logic, not just text similarity
+6. Consider systemic interdependencies and root cause relationships
+7. Prioritize clusters by business impact and urgency
 
-Return JSON array of clusters:
+Return JSON array of clusters with enhanced analysis:
 {{
   "cluster_id": "C1",
-  "representative_pain_point": "clear statement representing the cluster",
+  "representative_pain_point": "clear statement representing the cluster with business insight",
   "member_ids": ["PP1", "PP2"],
   "category": "business" or "technology",
   "severity": "highest severity in cluster",
-  "combined_impact": "overall impact of this cluster",
-  "recommended_action": "specific action to address this cluster"
+  "combined_impact": "comprehensive analysis of overall impact",
+  "recommended_action": "specific, actionable recommendation with business rationale"
 }}
 
-If pain points are genuinely distinct, keep them in separate clusters."""
+If pain points are genuinely distinct, keep them in separate clusters. Demonstrate GPT-5-mini's superior analytical capabilities."""
 
     try:
         loop = asyncio.get_event_loop()

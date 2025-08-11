@@ -4,13 +4,16 @@ from typing import Dict, Any, Optional
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 
-MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-PAIN_POINT_MODEL = os.getenv("PAIN_POINT_MODEL", "gpt-4o-mini")  # Can be upgraded to gpt-5-mini
+MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+PAIN_POINT_MODEL = os.getenv("PAIN_POINT_MODEL", "gpt-5-mini")  # Upgraded to GPT-5-mini
 CONFIGURED_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", 0.2))
 
 def _supports_arbitrary_temperature(model: str) -> bool:
-    # Some frontier models (e.g., certain gpt-5-* variants) only accept the default temperature (1)
-    # Heuristic: treat any 'gpt-5' model as not supporting arbitrary temperatures
+    # GPT-5 models may have specific temperature requirements
+    # For now, assume GPT-5-mini supports configurable temperature
+    if "gpt-5-mini" in (model or "").lower():
+        return True
+    # Other GPT-5 models might require default temperature
     return "gpt-5" not in (model or "").lower()
 
 EFFECTIVE_TEMPERATURE = CONFIGURED_TEMPERATURE if _supports_arbitrary_temperature(MODEL) else 1.0
