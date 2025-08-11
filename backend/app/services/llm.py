@@ -1,10 +1,11 @@
 import os
 import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+PAIN_POINT_MODEL = os.getenv("PAIN_POINT_MODEL", "gpt-4o-mini")  # Can be upgraded to gpt-5-mini
 CONFIGURED_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", 0.2))
 
 def _supports_arbitrary_temperature(model: str) -> bool:
@@ -17,8 +18,18 @@ EFFECTIVE_TEMPERATURE = CONFIGURED_TEMPERATURE if _supports_arbitrary_temperatur
 api_key = os.getenv("OPENAI_API_KEY")
 try:
     llm = ChatOpenAI(model=MODEL, temperature=EFFECTIVE_TEMPERATURE) if api_key else None
+    # Specialized LLM for pain point analysis (can use different model)
+    pain_point_llm = ChatOpenAI(
+        model=PAIN_POINT_MODEL, 
+        temperature=CONFIGURED_TEMPERATURE if _supports_arbitrary_temperature(PAIN_POINT_MODEL) else 1.0
+    ) if api_key else None
 except Exception:
     llm = None
+    pain_point_llm = None
+
+def get_pain_point_llm() -> Optional[ChatOpenAI]:
+    """Get the specialized LLM for pain point analysis."""
+    return pain_point_llm
 
 async def evaluate_use_cases(description: str) -> Dict[str, Any]:
     prompt = f"""You are an AI use case evaluator. Provide a concise 1-2 paragraph assessment and a 1-100 score for feasibility, impact, and strategic alignment.

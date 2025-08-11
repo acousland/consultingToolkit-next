@@ -1,207 +1,472 @@
-"""Pain Point Cleanup & Normalisation service (MVP).
+"""AI-Powered Pain Point Extraction & Analysis Service.
 
-Implements lightweight heuristic based clustering & rewrite suggestions without heavy
-embedding dependencies (can be upgraded to sentence-transformers + FAISS later).
+Uses advanced language models to intelligently extract, interpret, and categorize pain points
+from raw text. Focuses on identifying genuine business/technology problems rather than 
+simple text cleanup.
 
 Design goals:
-- Zero extra dependency beyond stdlib + pandas + existing llm adapter.
-- Deterministic heuristics when LLM disabled.
-- Clear data structure for proposal rows so frontend can adjust actions.
+- Intelligent pain point extraction using LLMs (GPT-4o-mini/GPT-5-mini)
+- Business vs Technology categorization
+- Deep interpretation of underlying problems
+- Smart deduplication based on semantic meaning
+- Clear, actionable pain point statements
 """
 from __future__ import annotations
 
+import os
+import asyncio
+import json
 from dataclasses import dataclass, asdict
-from typing import List, Dict, Any, Tuple, Optional
-import re
+from typing import List, Dict, Any, Optional, Union
 import io
-import difflib
 import pandas as pd
 
-from .llm import llm
+from .llm import get_pain_point_llm
 from langchain_core.messages import HumanMessage
 
-WEAK_VERBS = {"be", "is", "are", "have", "has", "do", "does", "get"}
-VAGUE_TERMS = {"improve", "better", "stuff", "things", "various", "misc", "some", "unclear"}
-METRIC_PATTERN = re.compile(r"\b\d+[%]?\b")
-COMPOUND_PATTERN = re.compile(r"\b(and|;|,\s*and)\b", re.IGNORECASE)
-PROPER_NOUN_RATIO_THRESHOLD = 0.6  # simple heuristic
+# Use GPT-4o-mini by default, but allow override to GPT-5-mini for this specific use case
+PAIN_POINT_MODEL = os.getenv("PAIN_POINT_MODEL", "gpt-4o-mini")
 
-def normalise_sentence(s: str) -> str:
-    s2 = (s or "").strip()
-    s2 = re.sub(r"\s+", " ", s2)
-    return s2
+@dataclass
+class ExtractedPainPoint:
+    id: str
+    original_text: str
+    extracted_pain_point: str
+    category: str  # "business" or "technology"
+    severity: str  # "low", "medium", "high", "critical"
+    stakeholders: List[str]
+    root_cause: str
+    impact_description: str
+    confidence: float  # 0.0 to 1.0
+    
+@dataclass
+class PainPointCluster:
+    cluster_id: str
+    representative_pain_point: str
+    member_ids: List[str]
+    category: str
+    severity: str
+    combined_impact: str
+    recommended_action: str
 
-def _present_tense_enforcement(s: str) -> str:
-    words = s.split()
-    out: List[str] = []
-    for w in words:
-        lw = w.lower()
-        if lw.endswith("ed") and len(lw) > 4 and lw[:-2] + "e" not in {"need", "speed"}:
-            out.append(w[:-2])
-        else:
-            out.append(w)
-    return " ".join(out)
+async def extract_pain_points_from_text(raw_text: str, context: str = "") -> List[ExtractedPainPoint]:
+    """Extract and analyze pain points from raw text using AI."""
+    pain_point_llm = get_pain_point_llm()
+    
+    if not pain_point_llm:
+        # Fallback when LLM is not available
+        lines = [line.strip() for line in raw_text.split('\n') if line.strip()]
+        return [
+            ExtractedPainPoint(
+                id=f"PP{i+1}",
+                original_text=line,
+                extracted_pain_point=line,
+                category="unknown",
+                severity="medium",
+                stakeholders=["users"],
+                root_cause="Unknown - LLM not available",
+                impact_description="Unknown impact",
+                confidence=0.5
+            ) for i, line in enumerate(lines)
+        ]
+    
+    # Enhanced prompt for GPT-4o-mini/GPT-5-mini
+    prompt = f"""You are an expert business analyst and technology consultant. Your task is to extract and analyze pain points from the provided text.
 
-def _remove_metrics(s: str) -> str:
-    return METRIC_PATTERN.sub("", s).replace("  ", " ").strip()
+CONTEXT: {context}
 
-def _remove_proper_nouns(s: str) -> str:
-    tokens = s.split()
-    proper = [t for t in tokens if t[:1].isupper() and t[1:].islower()]
-    if tokens and len(proper) / max(1, len(tokens)) > PROPER_NOUN_RATIO_THRESHOLD:
-        kept = [tokens[0]] + [t for t in tokens[1:] if not (t[:1].isupper() and t[1:].islower())]
-        return " ".join(kept)
-    return s
+INSTRUCTIONS:
+1. Identify genuine pain points - problems that cause frustration, inefficiency, or prevent desired outcomes
+2. Distinguish between business pain points (process, strategy, people issues) and technology pain points (system failures, poor UX, technical limitations)
+3. Extract the underlying problem, not just symptoms
+4. Assess severity based on potential business impact
+5. Identify likely stakeholders affected
+6. Determine root causes where possible
 
-def apply_style_rules(s: str, rules: Dict[str, bool], max_length: Optional[int]) -> str:
-    out = normalise_sentence(s)
-    if rules.get("present_tense"):
-        out = _present_tense_enforcement(out)
-    if rules.get("remove_metrics"):
-        out = _remove_metrics(out)
-    if rules.get("remove_proper_nouns"):
-        out = _remove_proper_nouns(out)
-    if max_length and len(out.split()) > max_length:
-        words = out.split()[:max_length]
-        out = " ".join(words)
-    return out.strip().rstrip(";,")
+TEXT TO ANALYZE:
+{raw_text}
 
-def similarity(a: str, b: str) -> float:
-    return difflib.SequenceMatcher(a=a.lower(), b=b.lower()).ratio()
+Return your analysis as a JSON array where each pain point has this structure:
+{{
+  "original_text": "exact text from source",
+  "extracted_pain_point": "clear, concise statement of the actual problem",
+  "category": "business" or "technology",
+  "severity": "low" | "medium" | "high" | "critical",
+  "stakeholders": ["list", "of", "affected", "groups"],
+  "root_cause": "likely underlying cause of this problem",
+  "impact_description": "how this problem affects the organization",
+  "confidence": 0.0-1.0 confidence in this analysis
+}}
 
-def cluster_sentences(sentences: List[str], threshold: float) -> List[List[int]]:
-    clusters: List[List[int]] = []
-    for idx, s in enumerate(sentences):
-        placed = False
-        for c in clusters:
-            rep_idx = c[0]
-            if similarity(sentences[rep_idx], s) >= threshold:
-                c.append(idx)
-                placed = True
-                break
-        if not placed:
-            clusters.append([idx])
-    return clusters
+EXAMPLE:
+If the text says "The system takes forever to load reports"
+Extract: {{
+  "original_text": "The system takes forever to load reports",
+  "extracted_pain_point": "Report generation system has poor performance causing productivity delays",
+  "category": "technology",
+  "severity": "high",
+  "stakeholders": ["managers", "analysts", "executives"],
+  "root_cause": "Inefficient database queries or inadequate server resources",
+  "impact_description": "Delayed decision-making, reduced productivity, user frustration",
+  "confidence": 0.85
+}}
 
-def heuristic_flags(s: str) -> Dict[str, bool]:
-    low = s.lower()
-    words = re.findall(r"[A-Za-z']+", low)
-    verb_count = sum(1 for w in words if w not in WEAK_VERBS)
-    weak = len(words) < 5 or verb_count == 0
-    vague = any(t in low for t in VAGUE_TERMS)
-    metric = bool(METRIC_PATTERN.search(s))
-    compound = bool(COMPOUND_PATTERN.search(s)) and len(words) > 12
-    return {"weak": weak, "vague": vague, "metric": metric, "compound": compound}
+Focus on extracting real problems, not just complaints. Be thorough but precise."""
 
-def choose_canonical(originals: List[str]) -> str:
-    def score(s: str) -> Tuple[int, int]:
-        vt = sum(1 for t in VAGUE_TERMS if t in s.lower())
-        return (len(s.split()), vt)
-    return sorted(originals, key=score)[0]
-
-def llm_canonicalise(cluster: List[str], context: str, max_length: Optional[int]) -> Optional[str]:
-    if llm is None:
-        return None
     try:
-        joined = "\n".join(f"- {c}" for c in cluster)
-        prompt = (
-            "You will receive a cluster of near-duplicate pain point statements.\n"
-            "Return ONE canonical, concise sentence (Australian English, present tense, <= 28 words) combining the substance of all points without redundancy.\n"
-            f"Context: {context[:300]}\n\nCluster:\n{joined}\n\nCanonical:"
+        # Use async execution for better performance
+        loop = asyncio.get_event_loop()
+        message = await loop.run_in_executor(
+            None, 
+            lambda: pain_point_llm.invoke([HumanMessage(content=prompt)])
         )
-        msg = llm.invoke([HumanMessage(content=prompt)])
-        out = getattr(msg, "content", "").strip().splitlines()[0]
-        return out.strip("-• ")
-    except Exception:
-        return None
+        
+        response_text = message.content.strip()
+        
+        # Extract JSON from response (handle potential markdown formatting)
+        if "```json" in response_text:
+            json_start = response_text.find("```json") + 7
+            json_end = response_text.find("```", json_start)
+            response_text = response_text[json_start:json_end].strip()
+        elif "```" in response_text:
+            json_start = response_text.find("```") + 3
+            json_end = response_text.find("```", json_start)
+            response_text = response_text[json_start:json_end].strip()
+        
+        try:
+            pain_points_data = json.loads(response_text)
+        except json.JSONDecodeError:
+            # Try to extract just the array part
+            start = response_text.find('[')
+            end = response_text.rfind(']') + 1
+            if start >= 0 and end > start:
+                pain_points_data = json.loads(response_text[start:end])
+            else:
+                raise
+        
+        extracted_points = []
+        for i, data in enumerate(pain_points_data):
+            extracted_points.append(ExtractedPainPoint(
+                id=f"PP{i+1}",
+                original_text=data.get("original_text", ""),
+                extracted_pain_point=data.get("extracted_pain_point", ""),
+                category=data.get("category", "unknown"),
+                severity=data.get("severity", "medium"),
+                stakeholders=data.get("stakeholders", []),
+                root_cause=data.get("root_cause", ""),
+                impact_description=data.get("impact_description", ""),
+                confidence=float(data.get("confidence", 0.5))
+            ))
+        
+        return extracted_points
+        
+    except Exception as e:
+        # Fallback on error
+        print(f"Error in pain point extraction: {e}")
+        lines = [line.strip() for line in raw_text.split('\n') if line.strip()]
+        return [
+            ExtractedPainPoint(
+                id=f"PP{i+1}",
+                original_text=line,
+                extracted_pain_point=line,
+                category="unknown",
+                severity="medium",
+                stakeholders=["users"],
+                root_cause=f"Analysis failed: {str(e)}",
+                impact_description="Unknown impact",
+                confidence=0.3
+            ) for i, line in enumerate(lines)
+        ]
+
+
+async def cluster_pain_points(pain_points: List[ExtractedPainPoint], context: str = "") -> List[PainPointCluster]:
+    """Group similar pain points using AI analysis."""
+    pain_point_llm = get_pain_point_llm()
+    
+    if not pain_point_llm or len(pain_points) <= 1:
+        # No clustering needed or possible
+        return [
+            PainPointCluster(
+                cluster_id="C1",
+                representative_pain_point=pp.extracted_pain_point,
+                member_ids=[pp.id],
+                category=pp.category,
+                severity=pp.severity,
+                combined_impact=pp.impact_description,
+                recommended_action="Address this pain point"
+            ) for pp in pain_points
+        ]
+    
+    # Prepare pain points for clustering analysis
+    pain_points_text = "\n".join([
+        f"ID: {pp.id} | {pp.extracted_pain_point} | Category: {pp.category} | Severity: {pp.severity}"
+        for pp in pain_points
+    ])
+    
+    prompt = f"""You are analyzing pain points to identify clusters of related issues. Group pain points that address the same underlying problem or system.
+
+CONTEXT: {context}
+
+PAIN POINTS TO CLUSTER:
+{pain_points_text}
+
+INSTRUCTIONS:
+1. Group pain points that relate to the same system, process, or underlying issue
+2. Create a representative statement that captures the essence of each cluster
+3. Determine the highest severity in each cluster
+4. Suggest specific actions for each cluster
+5. Focus on semantic similarity, not just text similarity
+
+Return JSON array of clusters:
+{{
+  "cluster_id": "C1",
+  "representative_pain_point": "clear statement representing the cluster",
+  "member_ids": ["PP1", "PP2"],
+  "category": "business" or "technology",
+  "severity": "highest severity in cluster",
+  "combined_impact": "overall impact of this cluster",
+  "recommended_action": "specific action to address this cluster"
+}}
+
+If pain points are genuinely distinct, keep them in separate clusters."""
+
+    try:
+        loop = asyncio.get_event_loop()
+        message = await loop.run_in_executor(
+            None,
+            lambda: pain_point_llm.invoke([HumanMessage(content=prompt)])
+        )
+        
+        response_text = message.content.strip()
+        
+        # Extract JSON from response
+        if "```json" in response_text:
+            json_start = response_text.find("```json") + 7
+            json_end = response_text.find("```", json_start)
+            response_text = response_text[json_start:json_end].strip()
+        elif "```" in response_text:
+            json_start = response_text.find("```") + 3
+            json_end = response_text.find("```", json_start)
+            response_text = response_text[json_start:json_end].strip()
+        
+        try:
+            clusters_data = json.loads(response_text)
+        except json.JSONDecodeError:
+            start = response_text.find('[')
+            end = response_text.rfind(']') + 1
+            if start >= 0 and end > start:
+                clusters_data = json.loads(response_text[start:end])
+            else:
+                raise
+        
+        clusters = []
+        for data in clusters_data:
+            clusters.append(PainPointCluster(
+                cluster_id=data.get("cluster_id", f"C{len(clusters)+1}"),
+                representative_pain_point=data.get("representative_pain_point", ""),
+                member_ids=data.get("member_ids", []),
+                category=data.get("category", "unknown"),
+                severity=data.get("severity", "medium"),
+                combined_impact=data.get("combined_impact", ""),
+                recommended_action=data.get("recommended_action", "")
+            ))
+        
+        return clusters
+        
+    except Exception as e:
+        print(f"Error in clustering: {e}")
+        # Fallback: each pain point in its own cluster
+        return [
+            PainPointCluster(
+                cluster_id=f"C{i+1}",
+                representative_pain_point=pp.extracted_pain_point,
+                member_ids=[pp.id],
+                category=pp.category,
+                severity=pp.severity,
+                combined_impact=pp.impact_description,
+                recommended_action="Address this pain point"
+            ) for i, pp in enumerate(pain_points)
+        ]
+
 
 @dataclass
 class ProposalRow:
+    """Legacy structure for compatibility with existing frontend."""
     id: str
     original: str
     group_id: str
     proposed: str
-    action: str  # Keep | Drop | Merge->ID | Rewrite
+    action: str
     rationale: str
     merged_ids: List[str]
+    
+    # Enhanced fields for AI analysis
+    category: str = ""
+    severity: str = ""
+    stakeholders: List[str] = None
+    root_cause: str = ""
+    impact: str = ""
+    confidence: float = 0.0
+
 
 def build_proposals(raw_points: List[str], options: Dict[str, Any]) -> Dict[str, Any]:
-    style_rules = options.get("style_rules", {})
-    thresholds = options.get("thresholds", {})
-    merge_threshold = float(thresholds.get("merge", 0.80))
-    additional_context = options.get("context", "")
-    max_length = 28 if style_rules.get("max_length") else None
+    """Main function to build pain point proposals using AI analysis."""
+    context = options.get("context", "")
+    
+    # If raw_points is a list of strings, treat as separate lines
+    if raw_points and isinstance(raw_points[0], str):
+        raw_text = "\n".join(raw_points)
+    else:
+        raw_text = str(raw_points)
+    
+    # Use async event loop for AI calls
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        # Extract pain points using AI
+        extracted_points = loop.run_until_complete(
+            extract_pain_points_from_text(raw_text, context)
+        )
+        
+        # Cluster similar pain points
+        clusters = loop.run_until_complete(
+            cluster_pain_points(extracted_points, context)
+        )
+        
+        # Convert to legacy format for frontend compatibility
+        proposal = []
+        for cluster in clusters:
+            primary_id = cluster.member_ids[0] if cluster.member_ids else f"PP{len(proposal)+1}"
+            
+            # Find the primary pain point
+            primary_point = next(
+                (pp for pp in extracted_points if pp.id == primary_id), 
+                extracted_points[0] if extracted_points else None
+            )
+            
+            if not primary_point:
+                continue
+                
+            # Create primary row
+            proposal.append(ProposalRow(
+                id=primary_id,
+                original=primary_point.original_text,
+                group_id=cluster.cluster_id,
+                proposed=cluster.representative_pain_point,
+                action="AI-Enhanced" if cluster.representative_pain_point != primary_point.original_text else "Keep",
+                rationale=f"Category: {cluster.category}, Severity: {cluster.severity}. {cluster.recommended_action}",
+                merged_ids=cluster.member_ids[1:] if len(cluster.member_ids) > 1 else [],
+                category=cluster.category,
+                severity=cluster.severity,
+                stakeholders=primary_point.stakeholders or [],
+                root_cause=primary_point.root_cause,
+                impact=cluster.combined_impact,
+                confidence=primary_point.confidence
+            ))
+            
+            # Create rows for merged items
+            for merged_id in cluster.member_ids[1:]:
+                merged_point = next((pp for pp in extracted_points if pp.id == merged_id), None)
+                if merged_point:
+                    proposal.append(ProposalRow(
+                        id=merged_id,
+                        original=merged_point.original_text,
+                        group_id=cluster.cluster_id,
+                        proposed="",
+                        action=f"Merge->{primary_id}",
+                        rationale=f"Merged into {primary_id}: Similar issue",
+                        merged_ids=[],
+                        category=merged_point.category,
+                        severity=merged_point.severity,
+                        stakeholders=merged_point.stakeholders or [],
+                        root_cause=merged_point.root_cause,
+                        impact=merged_point.impact_description,
+                        confidence=merged_point.confidence
+                    ))
+        
+        # Calculate summary statistics
+        business_count = len([p for p in extracted_points if p.category == "business"])
+        technology_count = len([p for p in extracted_points if p.category == "technology"])
+        high_severity_count = len([p for p in extracted_points if p.severity in ["high", "critical"]])
+        
+        summary = {
+            "total_raw": len(raw_points),
+            "ai_extracted": len(extracted_points),
+            "clustered_groups": len(clusters),
+            "business_pain_points": business_count,
+            "technology_pain_points": technology_count,
+            "high_severity_issues": high_severity_count,
+            "ai_model_used": PAIN_POINT_MODEL,
+            "analysis_quality": "AI-Enhanced" if get_pain_point_llm() else "Basic Fallback"
+        }
+        
+        return {
+            "proposal": [asdict(r) for r in proposal],
+            "summary": summary
+        }
+        
+    finally:
+        loop.close()
 
-    cleaned = [apply_style_rules(s, style_rules, max_length) for s in raw_points]
-    clusters = cluster_sentences(cleaned, merge_threshold)
-
-    proposal: List[ProposalRow] = []
-    exact_dupes = 0
-    merge_candidates = 0
-    near_duplicates = 0
-    for ci, c in enumerate(clusters):
-        originals = [cleaned[i] for i in c]
-        canonical = choose_canonical(originals)
-        llm_can = llm_canonicalise(originals, additional_context, max_length) if len(c) > 1 else None
-        if llm_can and (max_length is None or len(llm_can.split()) <= max_length):
-            canonical = llm_can
-        if len(c) > 1:
-            merge_candidates += 1
-            near_duplicates += len(c) - 1
-        group_id = f"G{ci+1}"
-        primary_id = f"PP{c[0]+1}"
-        for j, idx in enumerate(c):
-            orig = cleaned[idx]
-            rid = f"PP{idx+1}"
-            flags = heuristic_flags(orig)
-            if j == 0:
-                act = "Rewrite" if flags.get("weak") or flags.get("vague") else "Keep"
-                prop = canonical if act in {"Rewrite", "Keep"} else orig
-                merged_ids = [f"PP{x+1}" for x in c[1:]]
-            else:
-                act = f"Merge->{primary_id}"
-                prop = ""
-                merged_ids = []
-                if orig.lower() == originals[0].lower():
-                    exact_dupes += 1
-            rationale_parts = [k for k, v in flags.items() if v]
-            if j > 0:
-                rationale_parts.append("duplicate")
-            rationale = ", ".join(rationale_parts) or ("canonical" if j == 0 else "")
-            proposal.append(ProposalRow(id=rid, original=orig, group_id=group_id, proposed=prop, action=act, rationale=rationale, merged_ids=merged_ids))
-
-    summary = {
-        "total_raw": len(raw_points),
-        "exact_duplicates": exact_dupes,
-        "near_duplicates": near_duplicates,
-        "merge_candidates": merge_candidates,
-        "groups_detected": len(clusters),
-    }
-    return {"proposal": [asdict(r) for r in proposal], "summary": summary}
 
 def apply_actions(proposal_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-    final: List[Dict[str, Any]] = []
+    """Apply the proposed actions to generate final pain point list."""
+    final = []
     kept_ids = set()
+    
     for r in proposal_rows:
-        act = r.get("action", "Keep")
-        rid = r.get("id")
-        if act.startswith("Merge->"):
+        action = r.get("action", "Keep")
+        pain_point_id = r.get("id")
+        
+        # Skip merged or dropped items
+        if action.startswith("Merge->") or action == "Drop":
             continue
-        if act == "Drop":
-            continue
+            
+        # Get the final text (proposed or original)
         text = r.get("proposed") or r.get("original")
-        if not text or rid in kept_ids:
+        if not text or pain_point_id in kept_ids:
             continue
-        kept_ids.add(rid)
-        final.append({"id": rid, "text": text})
-    return {"clean_pain_points": final, "count": len(final)}
+            
+        kept_ids.add(pain_point_id)
+        
+        # Include enhanced metadata
+        final.append({
+            "id": pain_point_id,
+            "text": text,
+            "category": r.get("category", "unknown"),
+            "severity": r.get("severity", "medium"),
+            "stakeholders": r.get("stakeholders", []),
+            "root_cause": r.get("root_cause", ""),
+            "impact": r.get("impact", ""),
+            "confidence": r.get("confidence", 0.0)
+        })
+    
+    return {
+        "clean_pain_points": final,
+        "count": len(final)
+    }
+
 
 def export_report(proposal_rows: List[Dict[str, Any]], summary: Dict[str, Any]) -> bytes:
-    df = pd.DataFrame(proposal_rows)
+    """Export analysis to Excel with enhanced AI insights."""
+    # Prepare DataFrames with enhanced columns
+    df_proposals = pd.DataFrame(proposal_rows)
+    
+    # Add analysis insights if available
+    if "category" in df_proposals.columns:
+        df_insights = df_proposals.groupby(["category", "severity"]).size().reset_index(name="count")
+    else:
+        df_insights = pd.DataFrame({"analysis": ["Basic analysis - no AI categorization available"]})
+    
     df_final = pd.DataFrame(apply_actions(proposal_rows)["clean_pain_points"])
+    df_summary = pd.DataFrame([summary])
+    
     bio = io.BytesIO()
     with pd.ExcelWriter(bio, engine="xlsxwriter") as writer:
-        df.to_excel(writer, index=False, sheet_name="Proposed")
-        df_final.to_excel(writer, index=False, sheet_name="Final")
-        pd.DataFrame([summary]).to_excel(writer, index=False, sheet_name="Summary")
+        df_proposals.to_excel(writer, index=False, sheet_name="AI Analysis")
+        df_final.to_excel(writer, index=False, sheet_name="Final Pain Points")
+        df_insights.to_excel(writer, index=False, sheet_name="Insights")
+        df_summary.to_excel(writer, index=False, sheet_name="Summary")
+    
     return bio.getvalue()
