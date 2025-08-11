@@ -5,6 +5,7 @@ import pandas as pd
 from fastapi import APIRouter, UploadFile, File, Form, Response, HTTPException
 from pydantic import BaseModel, Field
 from ..services.pain_points import extract_from_file, extract_from_texts
+from ..services.cleanup import build_proposals, apply_actions, export_report
 from ..services.themes import map_themes_perspectives, PREDEFINED_THEMES, PREDEFINED_PERSPECTIVES
 from ..services.capabilities import map_capabilities, dataframe_to_xlsx_bytes as caps_to_xlsx
 from ..services.llm import llm, EFFECTIVE_TEMPERATURE
@@ -272,6 +273,54 @@ async def pain_point_capability_map_xlsx(
 class ImpactResponse(BaseModel):
     columns: List[str]
     rows: List[Dict[str, Any]]
+
+
+# ---------------------------------------------------------------------------
+# Pain Point Cleanup & Normalisation
+
+class CleanupOptions(BaseModel):
+    style_rules: Dict[str, bool] = Field(default_factory=dict, description="present_tense, remove_metrics, remove_proper_nouns, max_length")
+    normalisation: Dict[str, bool] = Field(default_factory=dict)
+    thresholds: Dict[str, float] = Field(default_factory=dict)  # merge
+    context: str = ""
+
+
+class CleanupProposalResponse(BaseModel):
+    proposal: List[Dict[str, Any]]
+    summary: Dict[str, Any]
+
+
+@router.post("/pain-points/cleanup/propose", response_model=CleanupProposalResponse)
+async def cleanup_propose(raw_points: List[str], options: CleanupOptions):  # body expects JSON array + options
+    if not raw_points:
+        return {"proposal": [], "summary": {"total_raw": 0}}
+    result = build_proposals(raw_points, options.model_dump())
+    return result
+
+
+class CleanupApplyRequest(BaseModel):
+    proposal: List[Dict[str, Any]]
+
+
+class CleanupApplyResponse(BaseModel):
+    clean_pain_points: List[Dict[str, Any]]
+    count: int
+
+
+@router.post("/pain-points/cleanup/apply", response_model=CleanupApplyResponse)
+async def cleanup_apply(payload: CleanupApplyRequest):
+    return apply_actions(payload.proposal)
+
+
+class CleanupReportRequest(BaseModel):
+    proposal: List[Dict[str, Any]]
+    summary: Dict[str, Any]
+
+
+@router.post("/pain-points/cleanup/report.xlsx")
+async def cleanup_report(payload: CleanupReportRequest):
+    data = export_report(payload.proposal, payload.summary)
+    return Response(content=data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=cleanup_report.xlsx"})
 
 
 @router.post("/pain-points/impact/estimate", response_model=ImpactResponse)
