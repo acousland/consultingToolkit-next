@@ -551,6 +551,107 @@ async def individual_application_map(payload: IndividualAppMapRequest):
 
 
 # ---------------------------------------------------------------------------
+# Physical → Logical Application Mapping (MECE)
+
+class PhysicalAppItem(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = ""
+
+
+class LogicalAppItem(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = ""
+
+
+class PhysicalLogicalMapRequest(BaseModel):
+    physical_apps: List[PhysicalAppItem]
+    logical_apps: List[LogicalAppItem]
+    context: Optional[str] = ""
+    uncertainty_threshold: Optional[float] = 0.22
+
+
+class PhysicalLogicalMapRecord(BaseModel):
+    physical_id: str
+    physical_name: str
+    logical_id: str
+    logical_name: str
+    similarity: float
+    rationale: str
+    uncertainty: bool
+
+
+class PhysicalLogicalMapResponse(BaseModel):
+    mappings: List[PhysicalLogicalMapRecord]
+    summary: Dict[str, Any]
+
+
+def _pl_similarity(a: str, b: str) -> float:
+    import difflib
+    return difflib.SequenceMatcher(a=a.lower(), b=b.lower()).ratio()
+
+
+@router.post("/applications/physical-logical/map", response_model=PhysicalLogicalMapResponse)
+async def physical_logical_map(payload: PhysicalLogicalMapRequest):
+    phys = payload.physical_apps or []
+    logical = payload.logical_apps or []
+    if not phys or not logical:
+        return {"mappings": [], "summary": {"physical": len(phys), "logical": len(logical), "uncertain": 0}}
+    mappings: List[PhysicalLogicalMapRecord] = []
+    for p in phys:
+        p_text = f"{p.name} {p.description or ''}".strip()
+        best = None
+        best_sim = -1.0
+        for l in logical:
+            l_text = f"{l.name} {l.description or ''}".strip()
+            sim = _pl_similarity(p_text, l_text)
+            if sim > best_sim:
+                best_sim = sim
+                best = l
+        if best is None:
+            continue
+        # Simple rationale: overlapping words
+        p_tokens = {t for t in (p_text.lower().split()) if len(t) > 3}
+        l_tokens = {t for t in (f"{best.name} {best.description or ''}".lower().split()) if len(t) > 3}
+        overlap = sorted(p_tokens & l_tokens)
+        rationale = "Overlap: " + (", ".join(overlap) if overlap else "minimal lexical overlap; closest overall semantic/heuristic match")
+        mappings.append(
+            PhysicalLogicalMapRecord(
+                physical_id=p.id,
+                physical_name=p.name,
+                logical_id=best.id,
+                logical_name=best.name,
+                similarity=round(best_sim, 3),
+                rationale=rationale,
+                uncertainty=best_sim < (payload.uncertainty_threshold or 0.22),
+            )
+        )
+    uncertain = sum(1 for m in mappings if m.uncertainty)
+    summary = {
+        "physical": len(phys),
+        "logical": len(logical),
+        "mapped": len(mappings),
+        "uncertain": uncertain,
+        "mece_physical_coverage": len(mappings) == len(phys),
+    }
+    return {"mappings": mappings, "summary": summary}
+
+
+@router.post("/applications/physical-logical/map.xlsx")
+async def physical_logical_map_xlsx(payload: PhysicalLogicalMapRequest):
+    resp = await physical_logical_map(payload)  # reuse logic
+    df = pd.DataFrame([m.model_dump() for m in resp["mappings"]]) if resp["mappings"] else pd.DataFrame(columns=[
+        "physical_id", "physical_name", "logical_id", "logical_name", "similarity", "rationale", "uncertainty"
+    ])
+    bio = io.BytesIO()
+    with pd.ExcelWriter(bio, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="Mappings")
+        pd.DataFrame([resp["summary"]]).to_excel(writer, index=False, sheet_name="Summary")
+    return Response(content=bio.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=physical_logical_mapping.xlsx"})
+
+
+# ---------------------------------------------------------------------------
 # Engagement Planning Toolkit
 
 
