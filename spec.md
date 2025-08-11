@@ -364,6 +364,70 @@ If no capabilities are relevant, respond with:
 - Build capability list text, insert optional context and application info into template.
 - Invoke model and render markdown response; show warning if no mappings found.
 
+### 4.1 Physical Application to Logical Application Mapping
+**Purpose:** Map a list of physical applications to a list of logical applications, ensuring mappings are mutually exclusive and collectively exhaustive (MECE).
+
+**UI Elements**
+	•	Upload Physical Applications Excel file and select sheet.
+	•	Choose physical application ID column and one or more description columns.
+	•	Upload Logical Applications Excel file and select sheet.
+	•	Choose logical application ID column and one or more description columns.
+	•	Optional text area for additional context about mapping criteria.
+	•	Button “Map Physical to Logical Applications”.
+	•	Display of:
+	•	Selected physical and logical application field choices.
+	•	Summary of mapping rules and MECE requirement.
+	•	AI-generated mapping table showing each logical application with its assigned physical applications.
+	•	Quick action buttons to:
+	•	Download mapping results as Excel.
+	•	Start a new mapping session.
+	•	Return to the main toolkit.
+
+**AI Prompt**
+PHYSICAL_TO_LOGICAL_MAPPING_PROMPT:
+
+You are an expert enterprise architect specialising in application portfolio management and MECE classification.
+
+Your task: Map each physical application to exactly one logical application from the provided list.
+Mappings must be:
+	•	Mutually Exclusive: Each physical application maps to only one logical application.
+	•	Collectively Exhaustive: All physical applications are mapped to a logical application.
+
+{context_section}
+
+Physical Applications:
+{physical_applications_text}
+
+Logical Applications:
+{logical_applications_text}
+
+Instructions:
+	1.	Understand the purpose, functions, and scope of each physical application.
+	2.	Understand the purpose, scope, and category of each logical application.
+	3.	Assign each physical application to the single logical application it best aligns with.
+	4.	If a physical application does not clearly align with any logical application, choose the closest match and note the uncertainty.
+	5.	Return your response in this exact format:
+
+Mappings:
+	•	PHYSICAL_APP_ID → LOGICAL_APP_ID: Brief explanation of reasoning
+
+If any mappings are uncertain, include:
+Uncertain Mappings:
+	•	PHYSICAL_APP_ID → LOGICAL_APP_ID: Reason for uncertainty
+
+**Processing Flow**
+	•	Build physical application list text and logical application list text from uploaded files.
+	•	Insert optional context into template.
+	•	Invoke model with prompt and render markdown mapping table.
+	•	Validate MECE compliance:
+	•	Check each physical application appears exactly once.
+	•	Show warnings if any are unmapped or duplicated.
+	•	Allow user to export results or re-run mapping after adjustments.
+
+
+
+
+
 ## 5. Engagement Planning Toolkit
 Toolkit landing page linking to Engagement Touchpoint Planning.
 

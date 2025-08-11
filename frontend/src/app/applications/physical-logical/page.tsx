@@ -10,7 +10,11 @@ export default function PhysicalLogicalMappingPage() {
   const [physicalExcel, setPhysicalExcel] = useState<StructuredExcelSelection>(emptyStructuredExcelSelection());
   const [logicalExcel, setLogicalExcel] = useState<StructuredExcelSelection>(emptyStructuredExcelSelection());
   const [context, setContext] = useState("");
-  const [threshold, setThreshold] = useState(0.22);
+  // LLM-only mode (heuristic removed)
+  const useLLM = true;
+  const [stream, setStream] = useState(true);
+  const [maxConcurrency, setMaxConcurrency] = useState(4);
+  const [progress, setProgress] = useState<{processed:number; total:number}>({processed:0,total:0});
   const [data, setData] = useState<ResponseData|null>(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,28 +37,55 @@ export default function PhysicalLogicalMappingPage() {
       if(physicalExcel.headerRowIndex != null) fd.append("physical_header_row_index", String(physicalExcel.headerRowIndex));
       if(logicalExcel.headerRowIndex != null) fd.append("logical_header_row_index", String(logicalExcel.headerRowIndex));
       fd.append("additional_context", context);
-      fd.append("uncertainty_threshold", String(threshold));
-      const res = await fetch("/api/ai/applications/physical-logical/map-from-files", { method:"POST", body: fd });
-      const j = await res.json(); if(!res.ok) throw new Error(j?.detail || "Request failed"); setData(j as ResponseData);
+  // no uncertainty threshold (removed)
+  if(useLLM){
+        fd.append("max_concurrency", String(maxConcurrency));
+        if(stream){
+          const res = await fetch("/api/ai/applications/physical-logical/map-from-files-llm-stream", { method:"POST", body: fd });
+          if(!res.ok || !res.body){
+            const txt = await res.text(); throw new Error(txt || "Streaming failed");
+          }
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+            for(;;){
+              const {value, done} = await reader.read();
+              if(done) break;
+              buffer += decoder.decode(value, {stream:true});
+              const parts = buffer.split(/\n\n/);
+              buffer = parts.pop() || "";
+              for(const part of parts){
+                if(!part.startsWith("data:")) continue;
+                const jsonStr = part.slice(5).trim();
+                if(!jsonStr) continue;
+                try {
+                  const evt = JSON.parse(jsonStr);
+                  if(evt.type === 'start'){
+                    setProgress({processed:0,total:evt.total||0});
+                  } else if(evt.type === 'progress'){
+                    setProgress({processed:evt.processed,total:evt.total});
+                  } else if(evt.type === 'complete'){
+                    setData({mappings:evt.mappings, summary:evt.summary});
+                  }
+                } catch {}
+              }
+            }
+        } else {
+          const res = await fetch("/api/ai/applications/physical-logical/map-from-files-llm", { method:"POST", body: fd });
+          const j = await res.json(); if(!res.ok) throw new Error(j?.detail || "Request failed"); setData(j as ResponseData);
+        }
+      } else {
+        const res = await fetch("/api/ai/applications/physical-logical/map-from-files", { method:"POST", body: fd });
+        const j = await res.json(); if(!res.ok) throw new Error(j?.detail || "Request failed"); setData(j as ResponseData);
+      }
     } catch(e){ setErr(e instanceof Error? e.message : "Request failed"); } finally { setLoading(false); }
   }
 
   async function downloadExcel(){
     try {
-      if(!ready) return; const fd = new FormData();
-      fd.append("physical_file", physicalExcel.file!);
-      fd.append("physical_id_column", physicalExcel.idColumn!);
-      fd.append("physical_text_columns", JSON.stringify(physicalExcel.textColumns));
-      fd.append("logical_file", logicalExcel.file!);
-      fd.append("logical_id_column", logicalExcel.idColumn!);
-      fd.append("logical_text_columns", JSON.stringify(logicalExcel.textColumns));
-      if(physicalExcel.sheet) fd.append("physical_sheet", physicalExcel.sheet);
-      if(logicalExcel.sheet) fd.append("logical_sheet", logicalExcel.sheet);
-      if(physicalExcel.headerRowIndex != null) fd.append("physical_header_row_index", String(physicalExcel.headerRowIndex));
-      if(logicalExcel.headerRowIndex != null) fd.append("logical_header_row_index", String(logicalExcel.headerRowIndex));
-      fd.append("additional_context", context);
-      fd.append("uncertainty_threshold", String(threshold));
-      const res = await fetch("/api/ai/applications/physical-logical/map.xlsx", { method:"POST", body: fd });
+  if(!data) return;
+  const payload = JSON.stringify({ mappings: data.mappings, summary: data.summary });
+  const res = await fetch("/api/ai/applications/physical-logical/export.xlsx", { method:"POST", body: payload });
       if(!res.ok) return;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -98,9 +129,17 @@ export default function PhysicalLogicalMappingPage() {
               <textarea value={context} onChange={e=>setContext(e.target.value)} className="w-full p-2 rounded border border-black/10 text-sm" rows={3} placeholder="Business context, scope guidance..." />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium flex items-center gap-2">Uncertainty Threshold <span className="text-xs text-black/50">({threshold.toFixed(2)})</span></label>
-              <input type="range" min={0} max={0.8} step={0.01} value={threshold} onChange={e=>setThreshold(parseFloat(e.target.value))} className="w-full" />
-              <p className="text-xs text-black/60">Rows with similarity below threshold are flagged for manual validation.</p>
+              <p className="text-xs text-indigo-700">LLM mapping active. Each physical app triggers a model call.</p>
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <label className="flex items-center gap-1">Max Concurrency
+                  <input type="number" min={1} max={100} value={maxConcurrency} onChange={e=>setMaxConcurrency(Math.min(100, Math.max(1, Number(e.target.value)||1)))} className="w-20 px-1 py-0.5 border rounded" />
+                </label>
+                <span className="text-[10px] text-black/50">1–100 (higher may increase API cost/rate limits)</span>
+                <label className="flex items-center gap-1">
+                  <input type="checkbox" checked={stream} onChange={e=>setStream(e.target.checked)} /> Stream Progress
+                </label>
+                {stream && <span>{progress.processed}/{progress.total} processed</span>}
+              </div>
             </div>
           </div>
           <div className="flex gap-3">

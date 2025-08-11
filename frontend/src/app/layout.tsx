@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const pkg = require("../../package.json");
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,6 +34,7 @@ export default function RootLayout({
         <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-8">
           {children}
         </div>
+        <Footer uiVersion={pkg.version} />
       </body>
     </html>
   );

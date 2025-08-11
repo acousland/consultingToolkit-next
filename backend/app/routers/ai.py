@@ -569,7 +569,8 @@ class PhysicalLogicalMapRequest(BaseModel):
     physical_apps: List[PhysicalAppItem]
     logical_apps: List[LogicalAppItem]
     context: Optional[str] = ""
-    uncertainty_threshold: Optional[float] = 0.22
+    # Optional concurrency hint (used by LLM variant)
+    max_concurrency: Optional[int] = 4  # Caller may request up to 100
 
 
 class PhysicalLogicalMapRecord(BaseModel):
@@ -580,6 +581,10 @@ class PhysicalLogicalMapRecord(BaseModel):
     similarity: float
     rationale: str
     uncertainty: bool
+    # Debug / transparency fields
+    model_logical_id: Optional[str] = None  # Raw ID emitted by model (before any adjustment)
+    auto_substituted: bool = False          # True if we had to replace a missing/invalid model id
+    mismatch_reason: Optional[str] = None   # Description of why substitution or mismatch occurred
 
 
 class PhysicalLogicalMapResponse(BaseModel):
@@ -591,56 +596,186 @@ def _pl_similarity(a: str, b: str) -> float:
     import difflib
     return difflib.SequenceMatcher(a=a.lower(), b=b.lower()).ratio()
 
+def _norm_id(raw: str) -> str:
+    """Normalize logical IDs for matching: case-insensitive, trim, collapse underscores, remove zero padding in numeric suffix after a hyphen.
+    Examples: 'la-02' -> 'la-2', ' LA_002 ' -> 'la-2'."""
+    if not raw:
+        return ""
+    s = raw.strip().replace('_', '-').lower()
+    import re
+    m = re.match(r'^([a-z]+-)(0*)(\d+)$', s)
+    if m:
+        prefix, zeros, num = m.groups()
+        # remove leading zeros but keep at least one digit
+        num = str(int(num))  # int() removes leading zeros
+        return prefix + num
+    return s
 
-@router.post("/applications/physical-logical/map", response_model=PhysicalLogicalMapResponse)
-async def physical_logical_map(payload: PhysicalLogicalMapRequest):
+
+@router.delete("/applications/physical-logical/heuristic")
+async def remove_heuristic_notice():
+    """Legacy endpoint placeholder: heuristic mapping removed in favour of LLM-only approach."""
+    raise HTTPException(status_code=410, detail="Heuristic mapping removed. Use LLM endpoints.")
+
+
+@router.post("/applications/physical-logical/map-llm", response_model=PhysicalLogicalMapResponse)
+async def physical_logical_map_llm(payload: PhysicalLogicalMapRequest):
+    """LLM-backed mapping: one model invocation per physical app (rich rationale).
+    Requires LLM configuration; no heuristic fallback.
+    """
+    if llm is None:
+        raise HTTPException(status_code=503, detail="LLM not configured for mapping")
     phys = payload.physical_apps or []
     logical = payload.logical_apps or []
     if not phys or not logical:
-        return {"mappings": [], "summary": {"physical": len(phys), "logical": len(logical), "uncertain": 0}}
-    mappings: List[PhysicalLogicalMapRecord] = []
-    for p in phys:
-        p_text = f"{p.name} {p.description or ''}".strip()
-        best = None
-        best_sim = -1.0
-        for l in logical:
-            l_text = f"{l.name} {l.description or ''}".strip()
-            sim = _pl_similarity(p_text, l_text)
-            if sim > best_sim:
-                best_sim = sim
-                best = l
-        if best is None:
-            continue
-        # Simple rationale: overlapping words
-        p_tokens = {t for t in (p_text.lower().split()) if len(t) > 3}
-        l_tokens = {t for t in (f"{best.name} {best.description or ''}".lower().split()) if len(t) > 3}
-        overlap = sorted(p_tokens & l_tokens)
-        rationale = "Overlap: " + (", ".join(overlap) if overlap else "minimal lexical overlap; closest overall semantic/heuristic match")
-        mappings.append(
-            PhysicalLogicalMapRecord(
+        return {"mappings": [], "summary": {"physical": len(phys), "logical": len(logical), "mapped": 0, "uncertain": 0, "mece_physical_coverage": len(phys)==0}}
+    import json, concurrent.futures
+    # Pre-build logical catalogue text
+    logical_catalogue = "\n".join(f"- {l.id}: {l.name} { (l.description or '').strip() }".strip() for l in logical)
+    # Normalized lookup map
+    logical_by_norm: Dict[str, LogicalAppItem] = { _norm_id(l.id): l for l in logical }
+    # Helper to call LLM for a single physical app
+    from langchain_core.messages import HumanMessage
+
+    def _call(p: PhysicalAppItem):
+        """Call LLM with up to 2 attempts enforcing rationale/id alignment."""
+        import re
+        p_text = f"{p.name} {(p.description or '').strip()}".strip()
+        def _base_prompt(issue: str = ""):
+            allowed_ids = ", ".join(l.id for l in logical)
+            parts = [
+                'You are an expert enterprise architect performing a one-to-one mapping from a PHYSICAL application to exactly ONE LOGICAL application.\n',
+                'Choose exactly one logical_id from the provided catalogue (no new IDs). If none fit well, still pick the closest and set uncertainty true.\n',
+                'Output STRICT JSON ONLY (no markdown): {"logical_id":"<ID from catalogue>", "rationale":"<one concise sentence referencing ONLY that ID>", "uncertainty": true|false}.\n',
+                'Rules: rationale must mention only the chosen logical_id (no other IDs), be <= 220 characters, and briefly justify fit.\n',
+            ]
+            if issue:
+                parts.append(f"Issue to correct: {issue}\n")
+            parts.extend([
+                f"Allowed logical_ids: [{allowed_ids}]\n",
+                f"Context: {(payload.context or '').strip()}\n\n",
+                f"Logical Applications Catalogue (ID: Name Description):\n{logical_catalogue}\n\n",
+                f"Physical Application: {p.id}: {p_text}\n",
+                "JSON:",
+            ])
+            return "".join(parts)
+        attempts = 0; max_attempts = 2; last_issue = ""
+        record: Optional[PhysicalLogicalMapRecord] = None
+        import json as _json
+        while attempts < max_attempts:
+            attempts += 1
+            prompt = _base_prompt(last_issue)
+            out = llm.invoke([HumanMessage(content=prompt)])
+            raw = getattr(out, 'content', '') or ''
+            s = raw; st = s.find('{'); en = s.rfind('}')
+            if st != -1 and en != -1 and en > st:
+                s = s[st:en+1]
+            try:
+                data = _json.loads(s)
+            except Exception:
+                last_issue = 'Unparseable JSON output'
+                continue
+            logical_id = str(data.get('logical_id') or '').strip()
+            uncertainty = bool(data.get('uncertainty'))
+            rationale = str(data.get('rationale') or '').strip() or 'Model supplied no rationale.'
+            target = next((l for l in logical if l.id == logical_id), None)
+            if target is None and logical_id:
+                # Try normalized lookup (case / zero padding differences)
+                target = logical_by_norm.get(_norm_id(logical_id))
+            mentioned_ids = set(re.findall(r'\b[A-Z]{2,}-\d+\b', rationale))
+            mismatch = False; issues = []
+            if target is None:
+                mismatch = True; issues.append(f'id {logical_id or "<empty>"} not found')
+            if not logical_id:
+                mismatch = True; issues.append('missing logical_id')
+            if mentioned_ids and (len(mentioned_ids) > 1 or (target and target.id not in mentioned_ids)):
+                mismatch = True; issues.append(f'rationale IDs {sorted(mentioned_ids)} misaligned')
+            if mismatch and attempts < max_attempts:
+                last_issue = "; ".join(issues)
+                continue
+            model_raw_id = logical_id
+            mismatch_reason: Optional[str] = None
+            auto_sub = False
+            if target is None:
+                # substitute closest because model id missing / not in catalogue
+                best = None; best_sim = -1.0
+                for l in logical:
+                    sim = _pl_similarity(logical_id or p.id, l.id)
+                    if sim > best_sim:
+                        best_sim = sim; best = l
+                target = best or logical[0]
+                mismatch_reason = f"model id {logical_id or '<empty>'} not found; substituted {target.id}"
+                rationale += f' (Adjusted: substituted closest {target.id} for {logical_id or "<empty>"})'
+                auto_sub = True
+                uncertainty = True
+            elif mismatch:
+                mismatch_reason = 'rationale/id alignment issues'
+                rationale += f' (Auto-corrected after retries: mapped to {target.id})'
+                uncertainty = True
+            sim_score = _pl_similarity(p_text, f"{target.name} {(target.description or '')}".strip())
+            record = PhysicalLogicalMapRecord(
                 physical_id=p.id,
                 physical_name=p.name,
-                logical_id=best.id,
-                logical_name=best.name,
-                similarity=round(best_sim, 3),
+                logical_id=target.id,
+                logical_name=target.name,
+                similarity=round(sim_score, 3),
                 rationale=rationale,
-                uncertainty=best_sim < (payload.uncertainty_threshold or 0.22),
+                uncertainty=uncertainty,
+                model_logical_id=model_raw_id or None,
+                auto_substituted=auto_sub,
+                mismatch_reason=mismatch_reason,
             )
-        )
-    uncertain = sum(1 for m in mappings if m.uncertainty)
+            break
+        if record is None:
+            # ultimate fallback
+            target = logical[0]
+            sim_score = _pl_similarity(p_text, f"{target.name} {(target.description or '')}".strip())
+            record = PhysicalLogicalMapRecord(
+                physical_id=p.id,
+                physical_name=p.name,
+                logical_id=target.id,
+                logical_name=target.name,
+                similarity=round(sim_score, 3),
+                rationale=f"Retries exhausted; fallback to {target.id}",
+                uncertainty=True,
+                model_logical_id=None,
+                auto_substituted=True,
+                mismatch_reason='retries_exhausted_fallback',
+            )
+        return record
+
+    # Execute calls (limit parallelism to avoid rate spikes)
+    # Determine concurrency respecting request hint but cap for safety.
+    hint = payload.max_concurrency or 4
+    max_workers = min(100, max(1, min(hint, len(phys))))
+    results: List[PhysicalLogicalMapRecord] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = [ex.submit(_call, p) for p in phys]
+        for fut in concurrent.futures.as_completed(futures):
+            rec = fut.result()
+            if rec:
+                results.append(rec)
+    # Preserve original order by physical id sequence
+    order = {p.id: i for i, p in enumerate(phys)}
+    results.sort(key=lambda r: order.get(r.physical_id, 1_000_000))
+    uncertain = sum(1 for m in results if m.uncertainty)
+    auto_subs = sum(1 for m in results if getattr(m, 'auto_substituted', False))
     summary = {
         "physical": len(phys),
         "logical": len(logical),
-        "mapped": len(mappings),
+        "mapped": len(results),
         "uncertain": uncertain,
-        "mece_physical_coverage": len(mappings) == len(phys),
+        "mece_physical_coverage": len(results) == len(phys),
+        "mode": "llm",
+        "auto_substitutions": auto_subs,
     }
-    return {"mappings": mappings, "summary": summary}
+    return {"mappings": results, "summary": summary}
 
 
 @router.post("/applications/physical-logical/map.xlsx")
 async def physical_logical_map_xlsx(payload: PhysicalLogicalMapRequest):
-    resp = await physical_logical_map(payload)  # reuse logic
+    # Heuristic route removed; reject if invoked
+    raise HTTPException(status_code=410, detail="Heuristic mapping removed. Use /applications/physical-logical/map-llm.xlsx")
     df = pd.DataFrame([m.model_dump() for m in resp["mappings"]]) if resp["mappings"] else pd.DataFrame(columns=[
         "physical_id", "physical_name", "logical_id", "logical_name", "similarity", "rationale", "uncertainty"
     ])
@@ -692,8 +827,279 @@ async def physical_logical_map_from_files(
         phys_records.append(PhysicalAppItem(id=pid, name=pid, description=desc))
     for lid, desc in zip(log_df[logical_id_column].astype(str).tolist(), _concat(log_df, log_txt_cols)):
         log_records.append(LogicalAppItem(id=lid, name=lid, description=desc))
-    result = await physical_logical_map(PhysicalLogicalMapRequest(physical_apps=phys_records, logical_apps=log_records, context=additional_context or "", uncertainty_threshold=uncertainty_threshold))
-    return result
+    # Heuristic path removed; direct users to LLM endpoints
+    raise HTTPException(status_code=410, detail="Heuristic mapping removed. Use LLM endpoints.")
+
+
+@router.post("/applications/physical-logical/map-from-files-llm", response_model=PhysicalLogicalMapResponse)
+async def physical_logical_map_from_files_llm(
+    physical_file: UploadFile = File(...),
+    physical_id_column: str = Form(...),
+    physical_text_columns: str = Form(...),
+    logical_file: UploadFile = File(...),
+    logical_id_column: str = Form(...),
+    logical_text_columns: str = Form(...),
+    additional_context: Optional[str] = Form(""),
+    physical_sheet: Optional[str] = Form(None),
+    logical_sheet: Optional[str] = Form(None),
+    physical_header_row_index: Optional[int] = Form(None),
+    logical_header_row_index: Optional[int] = Form(None),
+    max_concurrency: Optional[int] = Form(4),
+):
+    # Reuse file ingestion then delegate to LLM mapping endpoint
+    import json as _json
+    from ..services.pain_points import _read_dataframe_from_upload as _read_df
+    phys_bytes = await physical_file.read(); log_bytes = await logical_file.read()
+    try:
+        phys_txt_cols = list(dict.fromkeys(_json.loads(physical_text_columns))) if physical_text_columns else []
+        log_txt_cols = list(dict.fromkeys(_json.loads(logical_text_columns))) if logical_text_columns else []
+    except Exception:
+        phys_txt_cols, log_txt_cols = [], []
+    phys_df = _read_df(physical_file.filename or "physical", phys_bytes, physical_sheet, physical_header_row_index)
+    log_df = _read_df(logical_file.filename or "logical", log_bytes, logical_sheet, logical_header_row_index)
+    for col in [physical_id_column] + phys_txt_cols:
+        if col not in phys_df.columns:
+            raise HTTPException(status_code=400, detail=f"Physical column not found: {col}")
+    for col in [logical_id_column] + log_txt_cols:
+        if col not in log_df.columns:
+            raise HTTPException(status_code=400, detail=f"Logical column not found: {col}")
+    def _concat(df, cols):
+        if not cols: return [""] * len(df)
+        return df[cols].astype(str).agg(" ".join, axis=1).tolist()
+    phys_records = [PhysicalAppItem(id=str(pid), name=str(pid), description=desc) for pid, desc in zip(phys_df[physical_id_column].astype(str).tolist(), _concat(phys_df, phys_txt_cols))]
+    log_records = [LogicalAppItem(id=str(lid), name=str(lid), description=desc) for lid, desc in zip(log_df[logical_id_column].astype(str).tolist(), _concat(log_df, log_txt_cols))]
+    return await physical_logical_map_llm(PhysicalLogicalMapRequest(physical_apps=phys_records, logical_apps=log_records, context=additional_context or "", max_concurrency=max_concurrency))
+
+
+@router.post("/applications/physical-logical/map-from-files-llm-stream")
+async def physical_logical_map_from_files_llm_stream(
+    physical_file: UploadFile = File(...),
+    physical_id_column: str = Form(...),
+    physical_text_columns: str = Form(...),
+    logical_file: UploadFile = File(...),
+    logical_id_column: str = Form(...),
+    logical_text_columns: str = Form(...),
+    additional_context: Optional[str] = Form(""),
+    physical_sheet: Optional[str] = Form(None),
+    logical_sheet: Optional[str] = Form(None),
+    physical_header_row_index: Optional[int] = Form(None),
+    logical_header_row_index: Optional[int] = Form(None),
+    max_concurrency: Optional[int] = Form(4),
+):
+    """Streaming (SSE-style) variant of LLM mapping: emits progress events per physical app.
+    Each event line is formatted as 'data: {json}\n\n'. Final event has type=complete.
+    """
+    from ..services.pain_points import _read_dataframe_from_upload as _read_df
+    import json as _json, concurrent.futures
+    from fastapi.responses import StreamingResponse
+    from langchain_core.messages import HumanMessage
+
+    phys_bytes = await physical_file.read(); log_bytes = await logical_file.read()
+    try:
+        phys_txt_cols = list(dict.fromkeys(_json.loads(physical_text_columns))) if physical_text_columns else []
+        log_txt_cols = list(dict.fromkeys(_json.loads(logical_text_columns))) if logical_text_columns else []
+    except Exception:
+        phys_txt_cols, log_txt_cols = [], []
+    phys_df = _read_df(physical_file.filename or "physical", phys_bytes, physical_sheet, physical_header_row_index)
+    log_df = _read_df(logical_file.filename or "logical", log_bytes, logical_sheet, logical_header_row_index)
+    for col in [physical_id_column] + phys_txt_cols:
+        if col not in phys_df.columns:
+            raise HTTPException(status_code=400, detail=f"Physical column not found: {col}")
+    for col in [logical_id_column] + log_txt_cols:
+        if col not in log_df.columns:
+            raise HTTPException(status_code=400, detail=f"Logical column not found: {col}")
+    def _concat(df, cols):
+        if not cols: return [""] * len(df)
+        return df[cols].astype(str).agg(" ".join, axis=1).tolist()
+    phys_records = [PhysicalAppItem(id=str(pid), name=str(pid), description=desc) for pid, desc in zip(phys_df[physical_id_column].astype(str).tolist(), _concat(phys_df, phys_txt_cols))]
+    log_records = [LogicalAppItem(id=str(lid), name=str(lid), description=desc) for lid, desc in zip(log_df[logical_id_column].astype(str).tolist(), _concat(log_df, log_txt_cols))]
+
+    # If no LLM configured, degrade to heuristic streaming (still per app but local)
+    if llm is None:
+        raise HTTPException(status_code=503, detail="LLM not configured for streaming mapping")
+    use_llm = True
+    logical_catalogue = "\n".join(f"- {l.id}: {l.name} {(l.description or '').strip()}".strip() for l in log_records)
+    logical_by_norm: Dict[str, LogicalAppItem] = { _norm_id(l.id): l for l in log_records }
+    hint = max_concurrency or 4
+    max_workers = min(100, max(1, min(hint, len(phys_records))))
+
+    from time import time as _time
+    start_time = _time()
+
+    def _map_one(p: PhysicalAppItem):
+        p_text = f"{p.name} {(p.description or '').strip()}".strip()
+        if use_llm:
+            logical_id = ''; uncertainty_flag = False; rationale = 'No response.'
+            import re as _re
+            attempts = 0; max_attempts = 2; last_issue = ''
+            allowed_ids = ", ".join(l.id for l in log_records)
+            base_parts = [
+                'You are an expert enterprise architect performing a one-to-one mapping from a PHYSICAL application to exactly ONE LOGICAL application.\n',
+                'Choose exactly one logical_id from the provided catalogue (no new IDs). If none fit well, still pick the closest and set uncertainty true.\n',
+                'Output STRICT JSON ONLY: {"logical_id":"<ID from catalogue>", "rationale":"<one concise sentence referencing ONLY that ID>", "uncertainty": true|false}.\n',
+                'Rules: rationale must mention only the chosen logical_id, be <= 220 characters, and briefly justify fit.\n',
+                f"Allowed logical_ids: [{allowed_ids}]\n",
+                "Context: ", (additional_context or ""), "\n\n",
+                "Logical Applications Catalogue (ID: Name Description):\n", logical_catalogue, "\n\n",
+                "Physical Application: ", p.id, ": ", p_text, "\n",
+                "JSON:",
+            ]
+            base_prompt = "".join(base_parts)
+            while attempts < max_attempts:
+                attempts += 1
+                effective_prompt = base_prompt if not last_issue else base_prompt + f"\nIssue to correct: {last_issue}\nRe-output strict JSON."
+                try:
+                    out = llm.invoke([HumanMessage(content=effective_prompt)])
+                    raw = getattr(out, 'content', '') or ''
+                    s = raw; st = s.find('{'); en = s.rfind('}')
+                    if st != -1 and en != -1 and en > st:
+                        s = s[st:en+1]
+                    data = _json.loads(s)
+                    logical_id = str(data.get('logical_id') or '').strip()
+                    uncertainty_flag = bool(data.get('uncertainty'))
+                    rationale = str(data.get('rationale') or '').strip() or 'Model supplied no rationale.'
+                except Exception:
+                    last_issue = 'Unparseable output'
+                    continue
+                mentioned_ids = set(_re.findall(r'\b[A-Z]{2,}-\d+\b', rationale))
+                mismatch = False; issues = []
+                if not logical_id:
+                    mismatch = True; issues.append('missing logical_id')
+                if mentioned_ids and (len(mentioned_ids) > 1 or (logical_id and logical_id not in mentioned_ids)):
+                    mismatch = True; issues.append(f'rationale IDs {sorted(mentioned_ids)} misaligned')
+                if mismatch and attempts < max_attempts:
+                    last_issue = "; ".join(issues)
+                    continue
+                if mismatch:
+                    uncertainty_flag = True
+                    rationale += ' (Auto-corrected after retries)'
+                break
+        else:
+            logical_id = ''
+            uncertainty_flag = False
+            rationale = 'Heuristic mapping (LLM not configured).'
+        # If model didn't give an id or heuristic path: choose best lexical
+        target = None; best_sim = -1.0; original_id = logical_id
+        for l in log_records:
+            sim = _pl_similarity(p_text, f"{l.name} {(l.description or '')}".strip())
+            if sim > best_sim:
+                best_sim = sim; target = l
+            if logical_id and l.id == logical_id:
+                target = l; best_sim = sim
+        if target is None and logical_id:
+            # Normalized lookup
+            norm = _norm_id(logical_id)
+            target = logical_by_norm.get(norm, target)
+        if target is None:
+            return None
+        # If chosen differs from provided id or rationale references other IDs, annotate & mark uncertainty
+        import re
+        mismatch_reason = None; auto_sub = False
+        if not logical_id:
+            mismatch_reason = f"model id <empty> not found; substituted {target.id}"
+            rationale += f' (Adjusted: model id <empty> not found, substituted {target.id})'
+            uncertainty_flag = True; auto_sub = True
+        elif target.id != logical_id and _norm_id(logical_id) == _norm_id(target.id):
+            # Normalized match: accept without marking as substitution (case or zero padding only)
+            mismatch_reason = None; auto_sub = False
+            # Optionally annotate minimal normalization
+            if _norm_id(logical_id) == _norm_id(target.id):
+                rationale += ' (Normalized ID variant accepted)'
+        elif target.id != logical_id:
+            mismatch_reason = f"model id {original_id or '<empty>'} not found; substituted {target.id}"
+            rationale += f' (Adjusted: model id {original_id or "<empty>"} not found, substituted {target.id})'
+            uncertainty_flag = True; auto_sub = True
+        else:
+            mentioned_ids = set(re.findall(r'\b[A-Z]{2,}-\d+\b', rationale))
+            if mentioned_ids and (target.id not in mentioned_ids or len(mentioned_ids) > 1):
+                mismatch_reason = f"rationale referenced IDs {sorted(mentioned_ids)}; mapping kept {target.id}"
+                rationale += f' (Note: rationale referenced IDs {sorted(mentioned_ids)}; mapped to {target.id})'
+                uncertainty_flag = True
+        sim_score = _pl_similarity(p_text, f"{target.name} {(target.description or '')}".strip())
+    # Uncertainty flag is as returned by model only.
+        return PhysicalLogicalMapRecord(
+            physical_id=p.id,
+            physical_name=p.name,
+            logical_id=target.id,
+            logical_name=target.name,
+            similarity=round(sim_score, 3),
+            rationale=rationale,
+            uncertainty=uncertainty_flag,
+            model_logical_id=original_id or None,
+            auto_substituted=auto_sub,
+            mismatch_reason=mismatch_reason,
+        )
+
+    async def event_generator():
+        import asyncio as _asyncio
+        total = len(phys_records)
+        yield f"data: {_json.dumps({'type':'start','total': total, 'mode':'llm' if use_llm else 'heuristic'})}\n\n"
+        results: List[PhysicalLogicalMapRecord] = []
+        loop = __import__('asyncio').get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futures = {ex.submit(_map_one, p): p.id for p in phys_records}
+            processed = 0
+            for fut in concurrent.futures.as_completed(futures):
+                rec = await loop.run_in_executor(None, fut.result) if False else fut.result()  # fut.result is already blocking; just get result
+                if rec:
+                    results.append(rec)
+                    processed += 1
+                    yield f"data: {_json.dumps({'type':'progress','processed': processed,'total': total,'record': rec.model_dump()})}\n\n"
+                await _asyncio.sleep(0)  # cooperative yield
+        # Order
+        order = {p.id: i for i, p in enumerate(phys_records)}
+        results.sort(key=lambda r: order.get(r.physical_id, 1_000_000))
+        uncertain = sum(1 for m in results if m.uncertainty)
+        auto_subs = sum(1 for m in results if getattr(m, 'auto_substituted', False))
+        summary = {
+            'physical': len(phys_records),
+            'logical': len(log_records),
+            'mapped': len(results),
+            'uncertain': uncertain,
+            'mece_physical_coverage': len(results) == len(phys_records),
+            'mode': 'llm',
+            'elapsed_sec': round(_time() - start_time, 2),
+            'auto_substitutions': auto_subs,
+        }
+        yield f"data: {_json.dumps({'type':'complete','summary': summary,'mappings':[r.model_dump() for r in results]})}\n\n"
+        yield "data: {\"type\":\"end\"}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    })
+
+@router.post("/applications/physical-logical/map-llm.xlsx")
+async def physical_logical_map_llm_xlsx(payload: PhysicalLogicalMapRequest):
+    """Excel export using LLM mapping only."""
+    result = await physical_logical_map_llm(payload)
+    df = pd.DataFrame([m.model_dump() for m in result["mappings"]]) if result["mappings"] else pd.DataFrame(columns=[
+        "physical_id","physical_name","logical_id","logical_name","similarity","rationale","uncertainty","model_logical_id","auto_substituted","mismatch_reason"
+    ])
+    bio = io.BytesIO()
+    with pd.ExcelWriter(bio, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="Mappings")
+        pd.DataFrame([result["summary"]]).to_excel(writer, index=False, sheet_name="Summary")
+    return Response(content=bio.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=physical_logical_mapping_llm.xlsx"})
+
+
+class PhysicalLogicalExportRequest(BaseModel):
+    mappings: List[PhysicalLogicalMapRecord]
+    summary: Dict[str, Any]
+
+
+@router.post("/applications/physical-logical/export.xlsx")
+async def physical_logical_export_xlsx(payload: PhysicalLogicalExportRequest):
+    """Export provided mapping results to Excel without re-running LLM."""
+    df = pd.DataFrame([m.model_dump() for m in payload.mappings]) if payload.mappings else pd.DataFrame(columns=[
+        "physical_id","physical_name","logical_id","logical_name","similarity","rationale","uncertainty","model_logical_id","auto_substituted","mismatch_reason"
+    ])
+    bio = io.BytesIO()
+    with pd.ExcelWriter(bio, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="Mappings")
+        pd.DataFrame([payload.summary]).to_excel(writer, index=False, sheet_name="Summary")
+    return Response(content=bio.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=physical_logical_mapping.xlsx"})
 
 
 # ---------------------------------------------------------------------------

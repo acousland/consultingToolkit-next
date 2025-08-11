@@ -1,5 +1,14 @@
 node_modules
 .next
+.turbo
+npm-debug.log*
+dist
+.DS_Store
+.env*
+*.log
+coverage
+node_modules
+.next
 .git
 .gitignore
 Dockerfile*

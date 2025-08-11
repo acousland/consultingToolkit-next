@@ -1,3 +1,31 @@
+#############################
+# Root Docker build context ignore
+#############################
+.git
+.gitignore
+*.log
+**/__pycache__
+**/*.py[cod]
+**/*.swp
+
+# Python caches
+backend/.pytest_cache
+backend/.mypy_cache
+backend/.ruff_cache
+
+# Node build artefacts (will be re-installed in image)
+frontend/node_modules
+frontend/.next
+frontend/.turbo
+
+# Local env / editor
+.vscode
+.env
+.DS_Store
+
+# Misc
+docker-compose.override.yml
+tmp
 **/__pycache__
 **/.pytest_cache
 **/.venv
