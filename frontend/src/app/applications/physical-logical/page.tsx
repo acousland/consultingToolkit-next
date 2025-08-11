@@ -1,41 +1,60 @@
 "use client";
 import { useState } from "react";
+import { ExcelDataInput } from "@/components/ExcelDataInput";
+import { StructuredExcelSelection, emptyStructuredExcelSelection } from "@/types/excel";
 
-type PhysicalApp = { id: string; name: string; description: string };
-type LogicalApp = { id: string; name: string; description: string };
-interface MappingRecord { physical_id:string; physical_name:string; logical_id:string; logical_name:string; similarity:number; rationale:string; uncertainty:boolean }
+type MappingRecord = { physical_id:string; physical_name:string; logical_id:string; logical_name:string; similarity:number; rationale:string; uncertainty:boolean };
 interface ResponseData { mappings: MappingRecord[]; summary: Record<string, any> }
 
 export default function PhysicalLogicalMappingPage() {
-  const [physical, setPhysical] = useState<PhysicalApp[]>([{ id:"P1", name:"CRM Platform", description:"Handles customer lifecycle and sales pipeline" }]);
-  const [logical, setLogical] = useState<LogicalApp[]>([{ id:"L1", name:"Customer Relationship Management", description:"Logical grouping for managing customers, interactions, and pipeline" }]);
+  const [physicalExcel, setPhysicalExcel] = useState<StructuredExcelSelection>(emptyStructuredExcelSelection());
+  const [logicalExcel, setLogicalExcel] = useState<StructuredExcelSelection>(emptyStructuredExcelSelection());
   const [context, setContext] = useState("");
   const [threshold, setThreshold] = useState(0.22);
   const [data, setData] = useState<ResponseData|null>(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
-  function updatePhysical(i:number, patch:Partial<PhysicalApp>) { setPhysical(p=>p.map((r,idx)=>idx===i?{...r,...patch}:r)); }
-  function addPhysical(){ setPhysical(p=>[...p,{ id:"", name:"", description:"" }]); }
-  function removePhysical(i:number){ setPhysical(p=>p.filter((_,idx)=>idx!==i)); }
-
-  function updateLogical(i:number, patch:Partial<LogicalApp>) { setLogical(p=>p.map((r,idx)=>idx===i?{...r,...patch}:r)); }
-  function addLogical(){ setLogical(p=>[...p,{ id:"", name:"", description:"" }]); }
-  function removeLogical(i:number){ setLogical(p=>p.filter((_,idx)=>idx!==i)); }
+  const ready = physicalExcel.file && physicalExcel.idColumn && physicalExcel.textColumns.length>0 && logicalExcel.file && logicalExcel.idColumn && logicalExcel.textColumns.length>0;
 
   async function run(e:React.FormEvent){
     e.preventDefault(); setErr(""); setLoading(true); setData(null);
     try {
-      const res = await fetch("/api/ai/applications/physical-logical/map", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ physical_apps: physical, logical_apps: logical, context, uncertainty_threshold: threshold }) });
-      const j = await res.json();
-      if(!res.ok) throw new Error(j?.detail || "Request failed");
-      setData(j as ResponseData);
+      // Build multipart form for file-based endpoint
+      const fd = new FormData();
+      fd.append("physical_file", physicalExcel.file!);
+      fd.append("physical_id_column", physicalExcel.idColumn!);
+      fd.append("physical_text_columns", JSON.stringify(physicalExcel.textColumns));
+      fd.append("logical_file", logicalExcel.file!);
+      fd.append("logical_id_column", logicalExcel.idColumn!);
+      fd.append("logical_text_columns", JSON.stringify(logicalExcel.textColumns));
+      if(physicalExcel.sheet) fd.append("physical_sheet", physicalExcel.sheet);
+      if(logicalExcel.sheet) fd.append("logical_sheet", logicalExcel.sheet);
+      if(physicalExcel.headerRowIndex != null) fd.append("physical_header_row_index", String(physicalExcel.headerRowIndex));
+      if(logicalExcel.headerRowIndex != null) fd.append("logical_header_row_index", String(logicalExcel.headerRowIndex));
+      fd.append("additional_context", context);
+      fd.append("uncertainty_threshold", String(threshold));
+      const res = await fetch("/api/ai/applications/physical-logical/map-from-files", { method:"POST", body: fd });
+      const j = await res.json(); if(!res.ok) throw new Error(j?.detail || "Request failed"); setData(j as ResponseData);
     } catch(e){ setErr(e instanceof Error? e.message : "Request failed"); } finally { setLoading(false); }
   }
 
   async function downloadExcel(){
     try {
-      const res = await fetch("/api/ai/applications/physical-logical/map.xlsx", { method:"POST", headers:{"content-type":"application/json"}, body: JSON.stringify({ physical_apps: physical, logical_apps: logical, context, uncertainty_threshold: threshold }) });
+      if(!ready) return; const fd = new FormData();
+      fd.append("physical_file", physicalExcel.file!);
+      fd.append("physical_id_column", physicalExcel.idColumn!);
+      fd.append("physical_text_columns", JSON.stringify(physicalExcel.textColumns));
+      fd.append("logical_file", logicalExcel.file!);
+      fd.append("logical_id_column", logicalExcel.idColumn!);
+      fd.append("logical_text_columns", JSON.stringify(logicalExcel.textColumns));
+      if(physicalExcel.sheet) fd.append("physical_sheet", physicalExcel.sheet);
+      if(logicalExcel.sheet) fd.append("logical_sheet", logicalExcel.sheet);
+      if(physicalExcel.headerRowIndex != null) fd.append("physical_header_row_index", String(physicalExcel.headerRowIndex));
+      if(logicalExcel.headerRowIndex != null) fd.append("logical_header_row_index", String(logicalExcel.headerRowIndex));
+      fd.append("additional_context", context);
+      fd.append("uncertainty_threshold", String(threshold));
+      const res = await fetch("/api/ai/applications/physical-logical/map.xlsx", { method:"POST", body: fd });
       if(!res.ok) return;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -50,33 +69,27 @@ export default function PhysicalLogicalMappingPage() {
       <div className="mx-auto max-w-6xl space-y-8">
         <h1 className="text-3xl font-bold">Physical → Logical Application Mapping</h1>
         <p className="text-sm text-black/70 max-w-3xl">Map each physical application to exactly one logical application (MECE). Similarity is heuristic (lexical) in this MVP; low similarity rows are flagged as uncertain for manual review.</p>
-        <form onSubmit={run} className="space-y-6">
+        <form onSubmit={run} className="space-y-8">
           <div className="grid md:grid-cols-2 gap-8">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between"><h2 className="font-semibold">Physical Applications</h2><button type="button" onClick={addPhysical} className="text-xs px-2 py-1 rounded border border-black/10 hover:bg-black/5">Add</button></div>
-              {physical.map((p,i)=> (
-                <div key={i} className="space-y-1 border border-black/10 p-3 rounded-md">
-                  <div className="flex gap-2">
-                    <input value={p.id} onChange={e=>updatePhysical(i,{id:e.target.value})} placeholder="ID" className="w-28 p-2 rounded border border-black/10" />
-                    <input value={p.name} onChange={e=>updatePhysical(i,{name:e.target.value})} placeholder="Name" className="flex-1 p-2 rounded border border-black/10" />
-                    <button type="button" onClick={()=>removePhysical(i)} className="text-xs px-2 py-1 rounded border border-black/10 hover:bg-black/5">✕</button>
-                  </div>
-                  <textarea value={p.description} onChange={e=>updatePhysical(i,{description:e.target.value})} placeholder="Description" className="w-full p-2 rounded border border-black/10 text-sm" rows={2} />
-                </div>
-              ))}
+            <div>
+              <h2 className="font-semibold mb-2">Physical Applications Dataset</h2>
+              <ExcelDataInput
+                mode="id-text"
+                value={physicalExcel}
+                onChange={setPhysicalExcel}
+                labels={{ id: "Physical App ID", text: "Description Columns" }}
+                required
+              />
             </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between"><h2 className="font-semibold">Logical Applications</h2><button type="button" onClick={addLogical} className="text-xs px-2 py-1 rounded border border-black/10 hover:bg-black/5">Add</button></div>
-              {logical.map((p,i)=> (
-                <div key={i} className="space-y-1 border border-black/10 p-3 rounded-md">
-                  <div className="flex gap-2">
-                    <input value={p.id} onChange={e=>updateLogical(i,{id:e.target.value})} placeholder="ID" className="w-28 p-2 rounded border border-black/10" />
-                    <input value={p.name} onChange={e=>updateLogical(i,{name:e.target.value})} placeholder="Name" className="flex-1 p-2 rounded border border-black/10" />
-                    <button type="button" onClick={()=>removeLogical(i)} className="text-xs px-2 py-1 rounded border border-black/10 hover:bg-black/5">✕</button>
-                  </div>
-                  <textarea value={p.description} onChange={e=>updateLogical(i,{description:e.target.value})} placeholder="Description" className="w-full p-2 rounded border border-black/10 text-sm" rows={2} />
-                </div>
-              ))}
+            <div>
+              <h2 className="font-semibold mb-2">Logical Applications Dataset</h2>
+              <ExcelDataInput
+                mode="id-text"
+                value={logicalExcel}
+                onChange={setLogicalExcel}
+                labels={{ id: "Logical App ID", text: "Description Columns" }}
+                required
+              />
             </div>
           </div>
           <div className="grid md:grid-cols-2 gap-6">
@@ -91,7 +104,7 @@ export default function PhysicalLogicalMappingPage() {
             </div>
           </div>
           <div className="flex gap-3">
-            <button disabled={loading || physical.length===0 || logical.length===0} className="px-4 py-2 rounded bg-indigo-600 text-white disabled:opacity-50">{loading?"Mapping...":"Map Physical → Logical"}</button>
+            <button disabled={loading || !ready} className="px-4 py-2 rounded bg-indigo-600 text-white disabled:opacity-50">{loading?"Mapping...":"Map Physical → Logical"}</button>
             {data && <button type="button" onClick={downloadExcel} className="px-4 py-2 rounded border border-black/10 hover:bg-black/5">Download Excel</button>}
             {data && <button type="button" onClick={()=>setData(null)} className="px-4 py-2 rounded border border-black/10 hover:bg-black/5">New Session</button>}
           </div>

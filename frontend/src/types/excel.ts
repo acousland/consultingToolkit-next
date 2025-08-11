@@ -8,3 +8,7 @@ export interface StructuredExcelSelection {
 }
 
 export type ExcelSelectionMode = "id-text" | "single-text" | "multi-text";
+
+export function emptyStructuredExcelSelection(): StructuredExcelSelection {
+  return { file: null, sheet: null, headers: [], textColumns: [] };
+}

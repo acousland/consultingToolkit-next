@@ -651,6 +651,51 @@ async def physical_logical_map_xlsx(payload: PhysicalLogicalMapRequest):
     return Response(content=bio.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=physical_logical_mapping.xlsx"})
 
 
+@router.post("/applications/physical-logical/map-from-files", response_model=PhysicalLogicalMapResponse)
+async def physical_logical_map_from_files(
+    physical_file: UploadFile = File(...),
+    physical_id_column: str = Form(...),
+    physical_text_columns: str = Form(..., description="JSON array of text columns for physical apps"),
+    logical_file: UploadFile = File(...),
+    logical_id_column: str = Form(...),
+    logical_text_columns: str = Form(..., description="JSON array of text columns for logical apps"),
+    additional_context: Optional[str] = Form(""),
+    uncertainty_threshold: Optional[float] = Form(0.22),
+    physical_sheet: Optional[str] = Form(None),
+    logical_sheet: Optional[str] = Form(None),
+    physical_header_row_index: Optional[int] = Form(None),
+    logical_header_row_index: Optional[int] = Form(None),
+):
+    import pandas as _pd, json as _json, io as _io
+    from ..services.pain_points import _read_dataframe_from_upload as _read_df
+    phys_bytes = await physical_file.read()
+    log_bytes = await logical_file.read()
+    try:
+        phys_txt_cols = list(dict.fromkeys(_json.loads(physical_text_columns))) if physical_text_columns else []
+        log_txt_cols = list(dict.fromkeys(_json.loads(logical_text_columns))) if logical_text_columns else []
+    except Exception:
+        phys_txt_cols, log_txt_cols = [], []
+    phys_df = _read_df(physical_file.filename or "physical", phys_bytes, physical_sheet, physical_header_row_index)
+    log_df = _read_df(logical_file.filename or "logical", log_bytes, logical_sheet, logical_header_row_index)
+    for col in [physical_id_column] + phys_txt_cols:
+        if col not in phys_df.columns:
+            raise HTTPException(status_code=400, detail=f"Physical column not found: {col}")
+    for col in [logical_id_column] + log_txt_cols:
+        if col not in log_df.columns:
+            raise HTTPException(status_code=400, detail=f"Logical column not found: {col}")
+    phys_records: List[PhysicalAppItem] = []
+    log_records: List[LogicalAppItem] = []
+    def _concat(df, cols):
+        if not cols: return [""] * len(df)
+        return df[cols].astype(str).agg(" ".join, axis=1).tolist()
+    for pid, desc in zip(phys_df[physical_id_column].astype(str).tolist(), _concat(phys_df, phys_txt_cols)):
+        phys_records.append(PhysicalAppItem(id=pid, name=pid, description=desc))
+    for lid, desc in zip(log_df[logical_id_column].astype(str).tolist(), _concat(log_df, log_txt_cols)):
+        log_records.append(LogicalAppItem(id=lid, name=lid, description=desc))
+    result = await physical_logical_map(PhysicalLogicalMapRequest(physical_apps=phys_records, logical_apps=log_records, context=additional_context or "", uncertainty_threshold=uncertainty_threshold))
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Engagement Planning Toolkit
 
