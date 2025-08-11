@@ -1,5 +1,5 @@
 import io
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 import pandas as pd
 from langchain_core.messages import HumanMessage
@@ -8,7 +8,7 @@ from .llm import llm
 from .prompts import pain_point_capability_mapping_prompt
 
 
-def _read_sheet(filename: str, content: bytes, sheet_name: str | None) -> pd.DataFrame:
+def _read_sheet(filename: str, content: bytes, sheet_name: Optional[str]) -> pd.DataFrame:
     name = (filename or "").lower()
     bio = io.BytesIO(content)
     if name.endswith(".csv"):
@@ -51,7 +51,7 @@ async def map_capabilities(
     capabilities_text: str,
     additional_context: str = "",
     batch_size: int = 15,
-    sheet_name: str | None = None,
+    sheet_name: Optional[str] = None,
 ) -> pd.DataFrame:
     df = _read_sheet(pain_filename, pain_content, sheet_name)
     if pain_id_column not in df.columns:

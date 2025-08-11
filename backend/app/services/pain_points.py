@@ -2,7 +2,7 @@ import asyncio
 import io
 import re
 import difflib
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 import pandas as pd
 from langchain_core.messages import HumanMessage
@@ -105,8 +105,8 @@ async def extract_from_texts(rows: List[str], additional_prompts: str = "", chun
 def _read_dataframe_from_upload(
     filename: str,
     content: bytes,
-    sheet_name: str | None,
-    header_row_index: int | None = None,
+    sheet_name: Optional[str],
+    header_row_index: Optional[int] = None,
 ) -> pd.DataFrame:
     name = (filename or "").lower()
     bio = io.BytesIO(content)
@@ -168,7 +168,7 @@ def _read_dataframe_from_upload(
 def _read_raw_table(
     filename: str,
     content: bytes,
-    sheet_name: str | None,
+    sheet_name: Optional[str],
 ) -> pd.DataFrame:
     """Read sheet with no header to allow custom header row selection."""
     name = (filename or "").lower()
@@ -195,8 +195,8 @@ async def extract_from_file(
     selected_columns: List[str],
     additional_prompts: str = "",
     chunk_size: int = 20,
-    sheet_name: str | None = None,
-    header_row_index: int | None = None,
+    sheet_name: Optional[str] = None,
+    header_row_index: Optional[int] = None,
 ) -> Tuple[List[str], List[str]]:
     df = _read_dataframe_from_upload(filename, content, sheet_name, header_row_index)
     available_cols = [str(c) for c in df.columns]

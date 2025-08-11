@@ -1,0 +1,1 @@
+"""App subpackage for FastAPI application."""

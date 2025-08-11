@@ -1,5 +1,5 @@
 import io
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 import pandas as pd
 from langchain_core.messages import HumanMessage
@@ -24,7 +24,7 @@ PREDEFINED_PERSPECTIVES = [
 ]
 
 
-def _read_sheet(filename: str, content: bytes, sheet_name: str | None) -> pd.DataFrame:
+def _read_sheet(filename: str, content: bytes, sheet_name: Optional[str]) -> pd.DataFrame:
     name = (filename or "").lower()
     bio = io.BytesIO(content)
     if name.endswith(".csv"):
@@ -90,7 +90,7 @@ async def map_themes_perspectives(
     text_columns: List[str],
     additional_context: str = "",
     batch_size: int = 10,
-    sheet_name: str | None = None,
+    sheet_name: Optional[str] = None,
 ) -> pd.DataFrame:
     df = _read_sheet(filename, content, sheet_name)
     if id_column not in df.columns:

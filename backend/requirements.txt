@@ -13,3 +13,4 @@ redis
 celery
 rq
 python-dotenv
+pytest
