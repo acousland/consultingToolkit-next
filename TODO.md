@@ -2,7 +2,59 @@
 
 This file aggregates incomplete or future work items derived from `architecture.md` (Open items section + architectural gaps) and `spec.md` (features, UI elements, processing flows not yet implemented in the Next.js + FastAPI port).
 
-Status legend: [ ] not started, [~] partial/in progress, [?] needs clarification / decision.
+Status legend: [ ] not started, [~] partial/in progress, [?] needs clarification / decision, [!] high priority.
+
+---
+
+## 0. High Priority Fixes & Improvements
+
+### 0.1 Electron Migration (Primary Initiative)
+- [!] Install Electron dependencies (electron, electron-builder, electron-is-dev, electron-serve, electron-store)
+- [!] Create Electron main process (`frontend/electron/main.js`)
+- [!] Create preload script for secure IPC communication (`frontend/electron/preload.js`)
+- [!] Update Next.js config for static export (`output: 'export'`)
+- [!] Implement backend integration strategy (embedded Python or IPC-based API)
+- [!] Create file dialog handlers for native save/open operations
+- [!] Add electron-specific build scripts and configuration
+- [!] Test glassmorphic UI rendering in Electron
+- [!] Implement auto-updater configuration
+- [!] Create platform-specific packaging (macOS dmg, Windows nsis, Linux AppImage)
+
+### 0.2 Backend Stability & Performance
+- [!] Implement proper backend server lifecycle management (auto-start, health monitoring, graceful shutdown)
+- [!] Fix LLM processing timeouts in portfolio analysis (currently >60s for multi-capability analysis)
+- [!] Add request queuing and rate limiting for LLM endpoints
+- [!] Implement background processing for long-running analysis tasks
+- [!] Add server monitoring dashboard or logs viewer
+- [!] Create backend restart mechanism when server crashes
+- [!] Optimize portfolio analysis to process capabilities in parallel with timeout handling
+
+### 0.3 File Processing Robustness
+- [!] Enhance Excel parsing to handle complex file structures (merged headers, metadata rows, various encodings)
+- [!] Add file validation before upload (size limits, format checking, column detection)
+- [!] Implement graceful error messages for malformed Excel files
+- [!] Add progress indicators for large file processing
+- [!] Support CSV file upload as alternative to Excel
+- [!] Add file preview functionality to verify column mapping before analysis
+
+### 0.4 UI/UX Polish & Style Guide Compliance
+- [!] Audit all components for glassmorphic design system compliance
+- [!] Fix inconsistent component styling (rounded corners, gradients, transparency)
+- [!] Implement loading states for all async operations
+- [!] Add better error handling UI with actionable feedback
+- [!] Improve mobile responsiveness across all tools
+- [!] Add keyboard shortcuts for power users
+- [!] Implement dark/light theme toggle
+- [!] Add tooltips and help text for complex features
+
+### 0.5 API & Integration Improvements
+- [!] Update API documentation to reflect all implemented endpoints
+- [!] Add comprehensive OpenAPI schema validation
+- [!] Implement API versioning strategy
+- [!] Add request/response logging for debugging
+- [!] Create API client SDK for easier frontend integration
+- [!] Add API rate limiting and quota management
+- [!] Implement caching strategy for repeated LLM requests
 
 ---
 ## 1. Pain Point Toolkit

@@ -22,8 +22,8 @@ export default function NavBar() {
     <header className="sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-black/40 border-b border-white/10">
       <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="inline-block h-7 w-7 rounded bg-gradient-to-br from-indigo-500 to-violet-600" />
+          <Link href="/" className="flex items-center gap-2" aria-label="Consulting Toolkit Home">
+            <img src="/ct-logo.svg" alt="Consulting Toolkit" className="h-7 w-7" />
             <span className="text-sm sm:text-base font-semibold">Consulting Toolkit</span>
           </Link>
         </div>

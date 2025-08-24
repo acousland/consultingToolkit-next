@@ -28,7 +28,7 @@ export function ExcelDataInput({ mode, value, onChange, className, labels, requi
       idColumn: mode === "id-text" ? idColumn : undefined,
       textColumns: textColumns,
     });
-  }, [excel.file, excel.sheet, excel.headerRowIndex, excel.headers, idColumn, textColumns, mode, onChange]);
+  }, [excel.file, excel.sheet, excel.headerRowIndex, excel.headers, idColumn, textColumns, mode]);
 
   // Handle selection changes from column selector
   function handleColumnChange(v: any) {

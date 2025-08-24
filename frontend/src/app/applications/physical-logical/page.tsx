@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { ExcelDataInput } from "@/components/ExcelDataInput";
 import { StructuredExcelSelection, emptyStructuredExcelSelection } from "@/types/excel";
+import { PageShell, GlassCard, HeaderBand, GradientTitle, PrimaryButton, SecondaryButton, ProgressBar, StatusPill } from "@/components/ui";
 
 type MappingRecord = { 
   physical_id:string; physical_name:string; logical_id:string; logical_name:string; 
@@ -164,115 +165,164 @@ export default function PhysicalLogicalMappingPage() {
     URL.revokeObjectURL(url);
   }
 
+  const progressPercent = progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
+
   return (
-    <main>
-      <div className="mx-auto max-w-6xl space-y-8">
-        <h1 className="text-3xl font-bold">Physical → Logical Application Mapping</h1>
-        <p className="text-sm text-gray-600 max-w-3xl">Map each physical application to exactly one logical application (MECE). Uses LLM analysis with debug transparency for ID matching and substitution decisions.</p>
-        
-        {validationWarnings.length > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-            <h3 className="font-medium text-amber-800 mb-2">Validation Warnings</h3>
-            <ul className="text-sm text-amber-700 space-y-1">
-              {validationWarnings.map((warning, i) => <li key={i}>• {warning}</li>)}
-            </ul>
-          </div>
-        )}
-        <form onSubmit={run} className="space-y-8">
-          <div className="grid md:grid-cols-2 gap-8">
-            <div>
-              <h2 className="font-semibold mb-2">Physical Applications Dataset</h2>
-              <ExcelDataInput
-                mode="id-text"
-                value={physicalExcel}
-                onChange={setPhysicalExcel}
-                labels={{ id: "Physical App ID", text: "Description Columns" }}
-                required
-              />
-            </div>
-            <div>
-              <h2 className="font-semibold mb-2">Logical Applications Dataset</h2>
-              <ExcelDataInput
-                mode="id-text"
-                value={logicalExcel}
-                onChange={setLogicalExcel}
-                labels={{ id: "Logical App ID", text: "Description Columns" }}
-                required
-              />
-            </div>
-          </div>
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Additional Context</label>
-              <textarea value={context} onChange={e=>setContext(e.target.value)} className="w-full p-2 rounded border border-black/10 text-sm" rows={3} placeholder="Business context, scope guidance..." />
-            </div>
-            <div className="space-y-2">
-              <p className="text-xs text-indigo-700">LLM mapping active. Each physical app triggers a model call.</p>
-              <div className="flex flex-wrap items-center gap-3 text-xs">
-                <label className="flex items-center gap-1">Max Concurrency
-                  <input type="number" min={1} max={100} value={maxConcurrency} onChange={e=>setMaxConcurrency(Math.min(100, Math.max(1, Number(e.target.value)||1)))} className="w-20 px-1 py-0.5 border rounded" />
-                </label>
-                <span className="text-[10px] text-gray-500">1–100 (higher may increase API cost/rate limits)</span>
-                <label className="flex items-center gap-1">
-                  <input type="checkbox" checked={stream} onChange={e=>setStream(e.target.checked)} /> Stream Progress
-                </label>
-                {stream && <span>{progress.processed}/{progress.total} processed</span>}
+    <PageShell max="2xl">
+      {/* Header */}
+      <header className="space-y-4">
+        <HeaderBand label="AI Mapping Workflow" />
+        <GradientTitle>🔗 Physical → Logical Application Mapping</GradientTitle>
+        <p className="text-lg md:text-xl text-slate-300 max-w-3xl leading-relaxed">
+          Map each physical application to a single logical application (MECE). Uses LLM analysis with transparent reasoning, streaming progress, and export-ready results.
+        </p>
+      </header>
+
+      {/* Validation Warnings */}
+      {validationWarnings.length > 0 && (
+        <GlassCard padding="md" className="border-amber-400/30 bg-amber-500/10">
+          <h3 className="font-semibold text-amber-200 mb-2">Validation Warnings</h3>
+          <ul className="text-sm text-amber-100/90 space-y-1">
+            {validationWarnings.map((warning, i) => <li key={i}>• {warning}</li>)}
+          </ul>
+        </GlassCard>
+      )}
+
+      {/* Form Card */}
+      <form onSubmit={run} className="space-y-8">
+        <GlassCard>
+            <div className="grid grid-cols-1 gap-8">
+              <div>
+                <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">Logical Applications Dataset</h2>
+                <ExcelDataInput
+                  mode="id-text"
+                  value={logicalExcel}
+                  onChange={setLogicalExcel}
+                  labels={{ id: "Logical App ID", text: "Description Columns" }}
+                  required
+                />
               </div>
-              <div className="pt-2">
-                <label className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" checked={showDebugFields} onChange={e=>setShowDebugFields(e.target.checked)} />
-                  Show debug fields (model ID, substitutions, mismatch reasons)
-                </label>
+              <div>
+                <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold mb-2">Physical Applications Dataset</h2>
+                <ExcelDataInput
+                  mode="id-text"
+                  value={physicalExcel}
+                  onChange={setPhysicalExcel}
+                  labels={{ id: "Physical App ID", text: "Description Columns" }}
+                  required
+                />
               </div>
             </div>
-          </div>
-          <div className="flex gap-3">
-            <button disabled={loading || !ready} className="px-4 py-2 rounded bg-indigo-600 text-white disabled:opacity-50">{loading?"Mapping...":"Map Physical → Logical"}</button>
-            {data && <button type="button" onClick={downloadExcel} className="px-4 py-2 rounded border border-black/10 hover:bg-black/5">Download Excel</button>}
-            {data && <button type="button" onClick={()=>setData(null)} className="px-4 py-2 rounded border border-black/10 hover:bg-black/5">New Session</button>}
-          </div>
-        </form>
-        {err && <div className="p-3 border border-red-200 text-red-700 rounded">{err}</div>}
-        {data && (
-          <div className="space-y-4">
-            <div className="text-sm flex flex-wrap gap-3">
-              <span className="px-2 py-1 rounded bg-black/5">Physical: {data.summary.physical}</span>
-              <span className="px-2 py-1 rounded bg-black/5">Logical: {data.summary.logical}</span>
-              <span className="px-2 py-1 rounded bg-black/5">Mapped: {data.summary.mapped}</span>
-              <span className="px-2 py-1 rounded bg-black/5">Uncertain: {data.summary.uncertain}</span>
-              <span className="px-2 py-1 rounded bg-black/5">MECE Coverage: {data.summary.mece_physical_coverage?"Yes":"No"}</span>
+
+            <div className="grid grid-cols-1 gap-6">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-200">Additional Context</label>
+                <div className="relative">
+                  <textarea
+                    value={context}
+                    onChange={e=>setContext(e.target.value)}
+                    className="w-full h-32 rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/60 border border-white/10 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-fuchsia-400/40 focus:border-transparent shadow-inner"
+                    placeholder="Business context, scope guidance..."
+                  />
+                  <div className="pointer-events-none absolute inset-px rounded-[inherit] border border-white/5" />
+                </div>
+                <p className="text-xs text-slate-500">Keep it concise (1–4 sentences). Helps with disambiguation.</p>
+              </div>
+              <div className="space-y-3">
+                <div className="rounded-xl border border-indigo-400/30 bg-indigo-500/10 p-4">
+                  <p className="text-xs text-indigo-200">LLM mapping active. Each physical app triggers a model call.</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-300">
+                    <label className="flex items-center gap-2">Max Concurrency
+                      <input
+                        type="number" min={1} max={100} value={maxConcurrency}
+                        onChange={e=>setMaxConcurrency(Math.min(100, Math.max(1, Number(e.target.value)||1)))}
+                        className="w-20 px-2 py-1 rounded-lg bg-slate-900/60 border border-white/10"
+                      />
+                    </label>
+                    <span className="text-[10px] text-slate-500">1–100 (higher may increase API cost/rate limits)</span>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={stream} onChange={e=>setStream(e.target.checked)} /> Stream Progress
+                    </label>
+                    {stream && (
+                      <StatusPill className="px-2">{progress.processed}/{progress.total} processed</StatusPill>
+                    )}
+                  </div>
+                  {loading && stream && (
+                    <ProgressBar className="mt-3" value={progressPercent} />
+                  )}
+                  <div className="pt-3">
+                    <label className="flex items-center gap-2 text-xs">
+                      <input type="checkbox" checked={showDebugFields} onChange={e=>setShowDebugFields(e.target.checked)} />
+                      Show debug fields (model ID, substitutions, mismatch reasons)
+                    </label>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="rounded-xl border border-black/10 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-black/5 text-left">
-                    <th className="p-2">Physical (ID)</th>
-                    <th className="p-2">Logical (ID)</th>
-                    <th className="p-2">Similarity</th>
-                    <th className="p-2">Rationale</th>
-                    <th className="p-2">Uncertain</th>
+
+            <div className="flex flex-wrap gap-3">
+              <PrimaryButton disabled={loading || !ready} loading={loading} icon={<span>🔍</span>}>
+                Map Physical → Logical
+              </PrimaryButton>
+              {data && (
+                <>
+                  <SecondaryButton type="button" onClick={downloadExcel}>⬇️ Download Excel</SecondaryButton>
+                  <SecondaryButton type="button" onClick={downloadCsv}>⬇️ Download CSV</SecondaryButton>
+                  <SecondaryButton type="button" onClick={()=>setData(null)}>🔄 New Session</SecondaryButton>
+                </>
+              )}
+            </div>
+        </GlassCard>
+      </form>
+
+      {/* Error */}
+      {err && <GlassCard padding="md" className="border-rose-500/30 bg-rose-600/10 text-sm text-rose-200">❌ {err}</GlassCard>}
+
+      {/* Results */}
+      {data && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2 text-xs">
+            <StatusPill>Physical: <strong className="text-slate-50">{data.summary.physical}</strong></StatusPill>
+            <StatusPill>Logical: <strong className="text-slate-50">{data.summary.logical}</strong></StatusPill>
+            <StatusPill>Mapped: <strong className="text-slate-50">{data.summary.mapped}</strong></StatusPill>
+            <StatusPill>Uncertain: <strong className="text-slate-50">{data.summary.uncertain}</strong></StatusPill>
+            <StatusPill>MECE Coverage: <strong className="text-slate-50">{data.summary.mece_physical_coverage?"Yes":"No"}</strong></StatusPill>
+            {(() => { const stats = getStatistics(); return stats ? (
+              <StatusPill>Avg Similarity: <strong className="text-slate-50">{stats.avgSimilarity}</strong></StatusPill>
+            ) : null; })()}
+          </div>
+          <GlassCard padding="none">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm table-auto">
+                <thead className="bg-white/5">
+                  <tr className="text-left text-slate-300">
+                    <th className="p-3 font-semibold text-xs uppercase tracking-wide w-[26%]">Physical (ID)</th>
+                    <th className="p-3 font-semibold text-xs uppercase tracking-wide w-[26%]">Logical (ID)</th>
+                    <th className="p-3 font-semibold text-xs uppercase tracking-wide w-[10%]">Similarity</th>
+                    <th className="p-3 font-semibold text-xs uppercase tracking-wide w-[28%]">Rationale</th>
+                    <th className="p-3 font-semibold text-xs uppercase tracking-wide w-[10%]">Uncertain</th>
                     {showDebugFields && (
                       <>
-                        <th className="p-2 bg-yellow-100">Model ID</th>
-                        <th className="p-2 bg-yellow-100">Auto Sub</th>
-                        <th className="p-2 bg-yellow-100">Mismatch</th>
+                        <th className="p-3 font-semibold text-xs uppercase tracking-wide bg-yellow-900/20 w-[10%]">Model ID</th>
+                        <th className="p-3 font-semibold text-xs uppercase tracking-wide bg-yellow-900/20 w-[8%]">Auto Sub</th>
+                        <th className="p-3 font-semibold text-xs uppercase tracking-wide bg-yellow-900/20 w-[18%]">Mismatch</th>
                       </>
                     )}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-white/5">
                   {data.mappings.map(m => (
-                    <tr key={m.physical_id} className="odd:bg-black/5 align-top">
-                      <td className="p-2"><div className="font-medium">{m.physical_name}</div><div className="text-xs text-black/60">{m.physical_id}</div></td>
-                      <td className="p-2"><div className="font-medium">{m.logical_name}</div><div className="text-xs text-black/60">{m.logical_id}</div></td>
-                      <td className="p-2 tabular-nums">{m.similarity.toFixed(3)}</td>
-                      <td className="p-2 max-w-sm whitespace-pre-wrap">{m.rationale}</td>
-                      <td className="p-2">{m.uncertainty && <span className="text-xs px-2 py-1 rounded bg-amber-200 text-amber-900">Check</span>}</td>
+                    <tr key={m.physical_id} className="align-top hover:bg-white/3">
+                      <td className="p-3"><div className="font-medium text-slate-100/90">{m.physical_name}</div><div className="text-xs text-slate-500">{m.physical_id}</div></td>
+                      <td className="p-3"><div className="font-medium text-slate-100/90">{m.logical_name}</div><div className="text-xs text-slate-500">{m.logical_id}</div></td>
+                      <td className="p-3 tabular-nums text-slate-200">{m.similarity.toFixed(3)}</td>
+                      <td className="p-3 whitespace-pre-wrap text-slate-300">{m.rationale}</td>
+                      <td className="p-3">{m.uncertainty && <StatusPill variant="warning">Check</StatusPill>}</td>
                       {showDebugFields && (
                         <>
-                          <td className="p-2 bg-yellow-50 text-xs font-mono">{(m as any).model_logical_id || '-'}</td>
-                          <td className="p-2 bg-yellow-50 text-xs">{(m as any).auto_substituted ? 'Yes' : 'No'}</td>
-                          <td className="p-2 bg-yellow-50 text-xs max-w-xs whitespace-pre-wrap">{(m as any).mismatch_reason || '-'}</td>
+                          <td className="p-3 bg-yellow-400/10 text-xs font-mono text-yellow-200">{(m as any).model_logical_id || '-'}</td>
+                          <td className="p-3 bg-yellow-400/10 text-xs text-yellow-200">{(m as any).auto_substituted ? 'Yes' : 'No'}</td>
+                          <td className="p-3 bg-yellow-400/10 text-xs max-w-xs whitespace-pre-wrap text-yellow-200">{(m as any).mismatch_reason || '-'}</td>
                         </>
                       )}
                     </tr>
@@ -280,9 +330,9 @@ export default function PhysicalLogicalMappingPage() {
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
-      </div>
-    </main>
+          </GlassCard>
+        </div>
+      )}
+    </PageShell>
   );
 }

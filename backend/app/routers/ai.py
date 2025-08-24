@@ -1829,3 +1829,578 @@ async def customise_use_case(payload: UseCaseCustomiseRequest):
         )
     results.sort(key=lambda x: x["score"], reverse=True)
     return {"results": results}
+
+
+# ---------------------------------------------------------------------------
+# General LLM Chat Endpoint
+
+class ChatMessage(BaseModel):
+    role: str = Field(..., description="Message role: 'user', 'assistant', or 'system'")
+    content: str = Field(..., description="Message content")
+
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage] = Field(..., description="Conversation messages")
+    temperature: Optional[float] = Field(None, description="Response temperature (0-2)")
+    max_tokens: Optional[int] = Field(None, description="Maximum tokens in response")
+
+
+class ChatResponse(BaseModel):
+    response: str = Field(..., description="LLM response content")
+    usage: Optional[Dict[str, Any]] = Field(None, description="Token usage information")
+
+
+@router.post("/llm/chat", response_model=ChatResponse)
+async def llm_chat(payload: ChatRequest):
+    """Direct LLM chat interface for arbitrary conversations."""
+    if llm is None:
+        raise HTTPException(status_code=503, detail="LLM not configured")
+    
+    try:
+        from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+        
+        # Convert messages to LangChain format
+        lc_messages = []
+        for msg in payload.messages:
+            if msg.role == "system":
+                lc_messages.append(SystemMessage(content=msg.content))
+            elif msg.role == "assistant":
+                lc_messages.append(AIMessage(content=msg.content))
+            else:  # user or any other role
+                lc_messages.append(HumanMessage(content=msg.content))
+        
+        # Call LLM
+        response = llm.invoke(lc_messages)
+        content = getattr(response, 'content', '') or ''
+        
+        # Extract usage information if available
+        usage_info = None
+        if hasattr(response, 'usage_metadata'):
+            usage_info = response.usage_metadata
+        elif hasattr(response, 'response_metadata') and 'token_usage' in response.response_metadata:
+            usage_info = response.response_metadata['token_usage']
+        
+        return ChatResponse(
+            response=content,
+            usage=usage_info
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM chat failed: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Portfolio Analysis Endpoints
+
+class CapabilityItem(BaseModel):
+    id: str
+    text_content: str
+
+
+class ApplicationItem(BaseModel):
+    id: str
+    text_content: str
+
+
+class PainPointMapping(BaseModel):
+    pain_point_id: str
+    pain_point_desc: str
+    capability_id: str
+
+
+class CapabilityRecommendation(BaseModel):
+    capability: str
+    pain_points: List[str]
+    affected_applications: List[str]
+    recommendation: str
+    priority: str  # "High", "Medium", "Low"
+    impact: str
+    effort: str
+
+
+class AnalyzeCapabilityRequest(BaseModel):
+    capability: CapabilityItem
+    related_pain_points: List[PainPointMapping]
+    affected_applications: List[ApplicationItem]
+    all_applications: List[ApplicationItem]
+
+
+@router.post("/applications/portfolio/analyze-capability", response_model=CapabilityRecommendation)
+async def analyze_capability_for_portfolio(payload: AnalyzeCapabilityRequest):
+    """Analyze a single capability for portfolio recommendations."""
+    if llm is None:
+        raise HTTPException(status_code=503, detail="LLM not configured")
+    
+    try:
+        from langchain_core.messages import HumanMessage
+        
+        # Build the analysis prompt
+        pain_points_text = "\n".join([f"- {pp.pain_point_desc}" for pp in payload.related_pain_points])
+        
+        affected_apps_text = "\n".join([
+            f"- {app.id}: {app.text_content}" for app in payload.affected_applications
+        ])
+        
+        prompt = f"""You are an enterprise architect analyzing application portfolios. 
+
+CAPABILITY TO ANALYZE:
+- ID: {payload.capability.id}
+- Description: {payload.capability.text_content}
+
+RELATED PAIN POINTS:
+{pain_points_text}
+
+AFFECTED APPLICATIONS:
+{affected_apps_text}
+
+Based on this information, provide a recommendation for this capability. Consider:
+1. How the pain points affect this capability
+2. Which applications should be modified, replaced, or enhanced
+3. The priority level (High/Medium/Low) based on business impact
+4. The estimated effort and impact
+
+Respond in JSON format only:
+{{
+  "capability": "{payload.capability.id}",
+  "painPoints": [array of pain point descriptions],
+  "affectedApplications": [array of application IDs],
+  "recommendation": "detailed recommendation text",
+  "priority": "High|Medium|Low",
+  "impact": "description of business impact",
+  "effort": "description of implementation effort"
+}}"""
+
+        response = llm.invoke([HumanMessage(content=prompt)])
+        content = getattr(response, 'content', '') or ''
+        
+        # Parse JSON response
+        import json
+        try:
+            # Extract JSON from response (handle potential markdown formatting)
+            json_start = content.find('{')
+            json_end = content.rfind('}') + 1
+            if json_start != -1 and json_end > json_start:
+                json_content = content[json_start:json_end]
+                result = json.loads(json_content)
+                
+                return CapabilityRecommendation(
+                    capability=result.get('capability', payload.capability.id),
+                    pain_points=result.get('painPoints', [pp.pain_point_desc for pp in payload.related_pain_points]),
+                    affected_applications=result.get('affectedApplications', [app.id for app in payload.affected_applications]),
+                    recommendation=result.get('recommendation', 'Analysis could not be completed'),
+                    priority=result.get('priority', 'Medium'),
+                    impact=result.get('impact', 'Impact assessment pending'),
+                    effort=result.get('effort', 'Effort estimation pending')
+                )
+            else:
+                raise HTTPException(status_code=500, detail="LLM analysis failed to provide valid recommendation structure")
+                
+        except (json.JSONDecodeError, ValueError) as e:
+            raise HTTPException(status_code=500, detail=f"LLM response parsing failed: {str(e)}. LLM service is required for capability analysis.")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Capability analysis failed: {str(e)}")
+
+
+class HarmonizedRecommendation(BaseModel):
+    application: str
+    actions: List[str]
+    overall_priority: str  # "High", "Medium", "Low"
+    total_impact: str
+    consolidated_rationale: str
+
+
+class HarmonizeRecommendationsRequest(BaseModel):
+    recommendations: List[CapabilityRecommendation]
+    applications: List[ApplicationItem]
+
+
+class HarmonizeRecommendationsResponse(BaseModel):
+    harmonized_recommendations: List[HarmonizedRecommendation]
+
+
+@router.post("/applications/portfolio/harmonize", response_model=HarmonizeRecommendationsResponse)
+async def harmonize_portfolio_recommendations(payload: HarmonizeRecommendationsRequest):
+    """Harmonize capability recommendations across applications."""
+    if llm is None:
+        raise HTTPException(status_code=503, detail="LLM not configured")
+    
+    try:
+        from langchain_core.messages import HumanMessage
+        import json
+        
+        # Group recommendations by affected applications
+        app_recommendations = {}
+        for rec in payload.recommendations:
+            for app_id in rec.affected_applications:
+                if app_id not in app_recommendations:
+                    app_recommendations[app_id] = []
+                app_recommendations[app_id].append(rec)
+        
+        harmonized = []
+        
+        for app_id, app_recs in app_recommendations.items():
+            # Find application details
+            app_details = next((app for app in payload.applications if app.id == app_id), None)
+            
+            # Build harmonization prompt
+            recommendations_text = ""
+            for idx, rec in enumerate(app_recs, 1):
+                recommendations_text += f"""
+{idx}. Capability: {rec.capability}
+   Recommendation: {rec.recommendation}
+   Priority: {rec.priority}
+   Impact: {rec.impact}
+   Effort: {rec.effort}
+"""
+
+            prompt = f"""You are an enterprise architect harmonizing multiple capability recommendations for a single application.
+
+APPLICATION:
+- ID: {app_id}
+- Description: {app_details.text_content if app_details else 'No description available'}
+
+CAPABILITY RECOMMENDATIONS FOR THIS APPLICATION:
+{recommendations_text}
+
+Your task is to harmonize these recommendations into consolidated actions for this application. Consider:
+1. Are there conflicting recommendations that need resolution?
+2. Can actions be combined for efficiency?
+3. What is the overall priority when considering all capabilities?
+4. What is the consolidated rationale for the recommended actions?
+
+Respond in JSON format only:
+{{
+  "application": "{app_id}",
+  "actions": [array of specific action strings],
+  "overallPriority": "High|Medium|Low",
+  "totalImpact": "description of overall business impact",
+  "consolidatedRationale": "explanation of why these actions were chosen"
+}}"""
+
+            response = llm.invoke([HumanMessage(content=prompt)])
+            content = getattr(response, 'content', '') or ''
+            
+            try:
+                # Extract JSON from response
+                json_start = content.find('{')
+                json_end = content.rfind('}') + 1
+                if json_start != -1 and json_end > json_start:
+                    json_content = content[json_start:json_end]
+                    result = json.loads(json_content)
+                    
+                    harmonized.append(HarmonizedRecommendation(
+                        application=result.get('application', app_id),
+                        actions=result.get('actions', [f"Review application {app_id} based on capability recommendations"]),
+                        overall_priority=result.get('overallPriority', 'Medium'),
+                        total_impact=result.get('totalImpact', f'Multiple capabilities require attention in {app_id}'),
+                        consolidated_rationale=result.get('consolidatedRationale', f'Harmonized recommendations for {len(app_recs)} capabilities')
+                    ))
+                else:
+                    raise HTTPException(status_code=500, detail="LLM harmonization failed to provide valid response structure")
+                    
+            except (json.JSONDecodeError, ValueError) as e:
+                raise HTTPException(status_code=500, detail=f"LLM harmonization response parsing failed: {str(e)}. LLM service is required for recommendation harmonization.")
+        
+        return HarmonizeRecommendationsResponse(harmonized_recommendations=harmonized)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Harmonization failed: {str(e)}")
+
+
+class PortfolioAnalysisRequest(BaseModel):
+    capabilities: List[CapabilityItem]
+    applications: List[ApplicationItem]
+    pain_point_mappings: List[PainPointMapping]
+    application_mappings: List[ApplicationItem]  # Applications with capability mappings
+
+
+class PortfolioAnalysisResponse(BaseModel):
+    recommendations: List[CapabilityRecommendation]
+    harmonized_recommendations: List[HarmonizedRecommendation]
+    summary: Dict[str, Any]
+
+
+@router.post("/applications/portfolio/analyze-from-files")
+async def analyze_portfolio_from_files(
+    applications: UploadFile = File(...),
+    capabilities: UploadFile = File(...),
+    pain_point_mapping: UploadFile = File(...),
+    application_mapping: UploadFile = File(...),
+    pain_point_id_col: str = Form(...),
+    pain_point_desc_cols: str = Form(...),  # JSON array string
+    capability_id_col: str = Form(...),
+    app_id_col: str = Form(...),
+    app_name_col: str = Form(...),
+    cap_id_col: str = Form(...),
+    cap_name_col: str = Form(...),
+    additional_context: str = Form(""),
+    max_capabilities: int = Form(3),  # Limit capabilities for performance
+    fast_mode: bool = Form(False),  # Skip harmonization for speed
+):
+    """Complete portfolio analysis from uploaded files with performance limits."""
+    if llm is None:
+        raise HTTPException(status_code=503, detail="LLM not configured")
+    
+    try:
+        import pandas as pd
+        from io import BytesIO
+        import json
+        
+        # Parse pain point description columns from JSON
+        try:
+            pain_point_desc_cols_list = json.loads(pain_point_desc_cols)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid JSON format for pain_point_desc_cols")
+        
+        # Read uploaded files
+        apps_content = await applications.read()
+        caps_content = await capabilities.read()
+        pp_content = await pain_point_mapping.read()
+        app_map_content = await application_mapping.read()
+        
+        # Parse files based on extension
+        def parse_file(content: bytes, filename: str) -> pd.DataFrame:
+            if filename.endswith('.xlsx') or filename.endswith('.xls'):
+                return pd.read_excel(BytesIO(content))
+            elif filename.endswith('.csv'):
+                return pd.read_csv(BytesIO(content))
+            else:
+                raise HTTPException(status_code=400, detail=f"Unsupported file format: {filename}")
+        
+        apps_df = parse_file(apps_content, applications.filename)
+        caps_df = parse_file(caps_content, capabilities.filename)
+        pp_df = parse_file(pp_content, pain_point_mapping.filename)
+        app_map_df = parse_file(app_map_content, application_mapping.filename)
+        
+        # Validate required columns exist
+        def validate_columns(df: pd.DataFrame, required_cols: list, file_name: str):
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            if missing_cols:
+                available_cols = list(df.columns)
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Missing columns in {file_name}: {missing_cols}. Available columns: {available_cols}"
+                )
+        
+        validate_columns(apps_df, [app_id_col, app_name_col], "applications")
+        validate_columns(caps_df, [cap_id_col, cap_name_col], "capabilities")
+        validate_columns(pp_df, [pain_point_id_col, capability_id_col] + pain_point_desc_cols_list, "pain_point_mapping")
+        validate_columns(app_map_df, [app_id_col, cap_id_col], "application_mapping")
+        
+        # Limit capabilities for performance (take first N)
+        caps_df_limited = caps_df.head(max_capabilities)
+        print(f"Processing {len(caps_df_limited)} capabilities (limited from {len(caps_df)} for performance)")
+        
+        # Convert DataFrames to the expected data structures
+        applications_data = []
+        for _, row in apps_df.iterrows():
+            applications_data.append(ApplicationItem(
+                id=str(row[app_id_col]),
+                text_content=str(row[app_name_col])
+            ))
+        
+        capabilities_data = []
+        for _, row in caps_df_limited.iterrows():  # Use limited set
+            capabilities_data.append(CapabilityItem(
+                id=str(row[cap_id_col]),
+                text_content=str(row[cap_name_col])
+            ))
+        
+        pain_point_mappings_data = []
+        for _, row in pp_df.iterrows():
+            # Only include pain points for the capabilities we're processing
+            if str(row[capability_id_col]) in [cap.id for cap in capabilities_data]:
+                # Combine description columns
+                desc_parts = []
+                for col in pain_point_desc_cols_list:
+                    if pd.notna(row[col]):
+                        desc_parts.append(str(row[col]))
+                pain_point_desc = " | ".join(desc_parts)
+                
+                pain_point_mappings_data.append(PainPointMapping(
+                    pain_point_id=str(row[pain_point_id_col]),
+                    pain_point_desc=pain_point_desc,
+                    capability_id=str(row[capability_id_col])
+                ))
+        
+        application_mappings_data = []
+        for _, row in app_map_df.iterrows():
+            # Only include mappings for the capabilities we're processing
+            if str(row[cap_id_col]) in [cap.id for cap in capabilities_data]:
+                # Find the capability name
+                cap_info = caps_df[caps_df[cap_id_col] == row[cap_id_col]]
+                cap_name = cap_info.iloc[0][cap_name_col] if not cap_info.empty else str(row[cap_id_col])
+                
+                application_mappings_data.append(ApplicationItem(
+                    id=str(row[app_id_col]),
+                    text_content=cap_name
+                ))
+        
+        # Create the portfolio analysis request
+        portfolio_request = PortfolioAnalysisRequest(
+            applications=applications_data,
+            capabilities=capabilities_data,
+            pain_point_mappings=pain_point_mappings_data,
+            application_mappings=application_mappings_data,
+            additional_context=f"{additional_context}\n\nNote: Analysis limited to {max_capabilities} capabilities for performance. Fast mode: {fast_mode}"
+        )
+        
+        # Choose analysis approach based on fast_mode
+        if fast_mode:
+            print("Running in fast mode - capability analysis only, no harmonization")
+            # Just do capability analysis, skip harmonization
+            try:
+                recommendations = []
+                
+                # Analyze each capability quickly
+                for capability in capabilities_data:
+                    # Find related pain points
+                    related_pain_points = [
+                        pm for pm in pain_point_mappings_data 
+                        if pm.capability_id == capability.id
+                    ]
+                    
+                    # Find affected applications
+                    affected_apps = [
+                        app for app in application_mappings_data
+                        if capability.id.lower() in app.text_content.lower() or 
+                           capability.text_content.lower() in app.text_content.lower()
+                    ]
+                    
+                    # Create a simple recommendation without LLM
+                    simple_rec = CapabilityRecommendation(
+                        capability=capability.id,
+                        pain_points=[pp.pain_point_desc for pp in related_pain_points],
+                        affected_applications=[app.id for app in affected_apps],
+                        recommendation=f"Review {capability.text_content} - {len(related_pain_points)} pain points identified",
+                        priority="Medium",
+                        impact=f"{len(related_pain_points)} pain points affecting {len(affected_apps)} applications",
+                        effort="Assessment needed"
+                    )
+                    recommendations.append(simple_rec)
+                
+                # Simple harmonization
+                harmonized = []
+                for app in applications_data:
+                    app_recs = [r for r in recommendations if app.id in r.affected_applications]
+                    if app_recs:
+                        harmonized.append(HarmonizedRecommendation(
+                            application=app.id,
+                            actions=[f"Review {len(app_recs)} capabilities"],
+                            overall_priority="Medium",
+                            total_impact=f"Affected by {len(app_recs)} capability issues",
+                            consolidated_rationale=f"Application {app.text_content} requires review based on {len(app_recs)} capability assessments"
+                        ))
+                
+                return PortfolioAnalysisResponse(
+                    recommendations=recommendations,
+                    harmonized_recommendations=harmonized,
+                    summary={
+                        "total_capabilities": len(capabilities_data),
+                        "total_applications": len(applications_data),
+                        "high_priority_actions": 0,
+                        "total_recommendations": len(recommendations),
+                        "applications_affected": len(harmonized),
+                        "mode": "fast_mode_heuristic"
+                    }
+                )
+                
+            except Exception as e:
+                print(f"Fast mode error: {e}")
+                raise HTTPException(status_code=500, detail=f"Fast mode analysis failed: {str(e)}")
+        else:
+            # Full LLM analysis (original approach)
+            # Call the existing portfolio analysis function with a timeout wrapper
+            import asyncio
+            try:
+                print(f"Starting analysis of {len(capabilities_data)} capabilities...")
+                result = await asyncio.wait_for(
+                    analyze_portfolio(portfolio_request), 
+                    timeout=45.0  # Shorter timeout
+                )
+                print("Analysis completed successfully!")
+                return result
+            except asyncio.TimeoutError:
+                print("Analysis timed out, providing partial results...")
+                # Return a simplified response if timeout occurs
+                return PortfolioAnalysisResponse(
+                    recommendations=[],
+                    harmonized_recommendations=[],
+                    summary={
+                        "error": "Analysis timed out",
+                        "total_capabilities": len(capabilities_data),
+                        "total_applications": len(applications_data),
+                        "message": f"Analysis of {len(capabilities_data)} capabilities exceeded 45 second limit. Try reducing complexity or number of capabilities."
+                    }
+                )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Portfolio analysis from files error: {e}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
+@router.post("/applications/portfolio/analyze", response_model=PortfolioAnalysisResponse)
+async def analyze_portfolio(payload: PortfolioAnalysisRequest):
+    """Complete portfolio analysis workflow."""
+    if llm is None:
+        raise HTTPException(status_code=503, detail="LLM not configured")
+    
+    try:
+        recommendations = []
+        
+        # Analyze each capability
+        for capability in payload.capabilities:
+            # Find related pain points
+            related_pain_points = [
+                pm for pm in payload.pain_point_mappings 
+                if pm.capability_id == capability.id
+            ]
+            
+            # Find affected applications
+            affected_apps = [
+                app for app in payload.application_mappings
+                if capability.id.lower() in app.text_content.lower() or 
+                   capability.text_content.lower() in app.text_content.lower()
+            ]
+            
+            # Analyze capability
+            analysis_request = AnalyzeCapabilityRequest(
+                capability=capability,
+                related_pain_points=related_pain_points,
+                affected_applications=affected_apps,
+                all_applications=payload.applications
+            )
+            
+            recommendation = await analyze_capability_for_portfolio(analysis_request)
+            recommendations.append(recommendation)
+        
+        # Harmonize recommendations
+        harmonize_request = HarmonizeRecommendationsRequest(
+            recommendations=recommendations,
+            applications=payload.applications
+        )
+        
+        harmonize_response = await harmonize_portfolio_recommendations(harmonize_request)
+        
+        # Generate summary
+        high_priority_count = len([hr for hr in harmonize_response.harmonized_recommendations if hr.overall_priority == "High"])
+        
+        summary = {
+            "total_capabilities": len(payload.capabilities),
+            "total_applications": len(payload.applications),
+            "high_priority_actions": high_priority_count,
+            "total_recommendations": len(recommendations),
+            "applications_affected": len(harmonize_response.harmonized_recommendations)
+        }
+        
+        return PortfolioAnalysisResponse(
+            recommendations=recommendations,
+            harmonized_recommendations=harmonize_response.harmonized_recommendations,
+            summary=summary
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Portfolio analysis failed: {str(e)}")

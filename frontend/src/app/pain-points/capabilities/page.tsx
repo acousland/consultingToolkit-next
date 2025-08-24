@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { ExcelDataInput } from "@/components/ExcelDataInput";
 import { StructuredExcelSelection } from "@/types/excel";
+import { PageShell, GlassCard, HeaderBand, GradientTitle, PrimaryButton, SecondaryButton } from "@/components/ui";
 
 interface CapMapRes {
   columns: string[];
@@ -58,61 +59,123 @@ export default function CapabilityMapping() {
   }
 
   return (
-    <main className="min-h-screen p-2 sm:p-4">
-      <div className="mx-auto max-w-[110rem] space-y-6">
-        <h1 className="text-3xl font-bold">Capability Mapping</h1>
-  <p className="text-gray-600">Upload pain points and paste your capability catalogue (IDs + names/descriptions). We&apos;ll map each pain point to the most relevant capability ID.</p>
+    <PageShell max="2xl">
+      {/* Header */}
+      <header className="space-y-4">
+        <HeaderBand label="AI Mapping Workflow" />
+        <GradientTitle>🧭 Pain Point → Capability Mapping</GradientTitle>
+        <p className="text-lg md:text-xl text-slate-300 max-w-3xl leading-relaxed">
+          Upload pain points and paste your capability catalogue (IDs + names/descriptions). We’ll map each pain point to the most relevant capability ID.
+        </p>
+      </header>
 
-        <form id="cap-map-form" className="grid md:grid-cols-2 gap-6" onSubmit={onSubmit}>
-          <div className="space-y-3">
-            <label className="block text-sm font-medium">Upload CSV/XLSX</label>
-            <ExcelDataInput mode="id-text" value={excel} onChange={setExcel} />
-            <label className="block text-sm font-medium mt-4">Pain Point ID column</label>
-            <input type="text" className="w-full p-2 border rounded" value={idCol} onChange={e=>setIdCol(e.target.value)} placeholder="e.g. Pain_Point_ID" />
-            <label className="block text-sm font-medium">Text columns (comma-separated)</label>
-            <input type="text" className="w-full p-2 border rounded" value={textCols} onChange={e=>setTextCols(e.target.value)} placeholder="e.g. Title,Description" />
-            <label className="block text-sm font-medium">Sheet name (optional)</label>
-            <input type="text" className="w-full p-2 border rounded" value={sheet} onChange={e=>setSheet(e.target.value)} />
-          </div>
-          <div className="space-y-3">
-            <label className="block text-sm font-medium">Capability list (IDs + names/descriptions)</label>
-            <textarea className="w-full h-44 p-2 border rounded" value={capabilities} onChange={e=>setCapabilities(e.target.value)} placeholder={`e.g.\nCAP-01: Customer Onboarding\nCAP-02: Billing & Invoicing\n...`} />
-            <label className="block text-sm font-medium">Additional context</label>
-            <textarea className="w-full h-24 p-2 border rounded" value={context} onChange={e=>setContext(e.target.value)} />
-            <label className="block text-sm font-medium">Batch size</label>
-            <input type="number" className="w-40 p-2 border rounded" value={batch} onChange={e=>setBatch(parseInt(e.target.value||"15",10))} />
-            <div className="flex gap-2">
-              <button className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50" disabled={loading} type="submit">
-                {loading ? "Mapping..." : "Map capabilities"}
-              </button>
-              <button type="button" className="px-4 py-2 bg-emerald-600 text-white rounded" onClick={downloadXlsx}>Download XLSX</button>
+      {/* Form */}
+      <form id="cap-map-form" className="space-y-8" onSubmit={onSubmit}>
+        <GlassCard>
+          <div className="grid grid-cols-1 gap-8">
+            <div className="space-y-3">
+              <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold">Pain Points Dataset</h2>
+              <label className="block text-sm font-medium text-slate-200">Upload CSV/XLSX</label>
+              <ExcelDataInput mode="id-text" value={excel} onChange={setExcel} />
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-slate-200">Pain Point ID column</label>
+                  <input
+                    type="text"
+                    className="w-full rounded-xl bg-slate-800/60 border border-white/10 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-fuchsia-400/30"
+                    value={idCol}
+                    onChange={e=>setIdCol(e.target.value)}
+                    placeholder="e.g. Pain_Point_ID"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-slate-200">Text columns (comma-separated)</label>
+                  <input
+                    type="text"
+                    className="w-full rounded-xl bg-slate-800/60 border border-white/10 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-fuchsia-400/30"
+                    value={textCols}
+                    onChange={e=>setTextCols(e.target.value)}
+                    placeholder="e.g. Title,Description"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-200">Sheet name (optional)</label>
+                <input
+                  type="text"
+                  className="w-full rounded-xl bg-slate-800/60 border border-white/10 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-fuchsia-400/30"
+                  value={sheet}
+                  onChange={e=>setSheet(e.target.value)}
+                />
+              </div>
             </div>
-            {error && <div className="p-2 border border-red-300 text-red-700 rounded">{error}</div>}
-          </div>
-        </form>
 
-        {result && (
-          <section>
-            <h2 className="text-2xl font-semibold mb-2">Results</h2>
-            <div className="overflow-auto border rounded">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr>
-                    {result.columns.map(c => (<th className="text-left p-2 border-b" key={c}>{c}</th>))}
+            <div className="space-y-3">
+              <h2 className="text-sm uppercase tracking-wider text-slate-400 font-semibold">Capabilities Catalogue</h2>
+              <label className="block text-sm font-medium text-slate-200">Capability list (IDs + names/descriptions)</label>
+              <div className="relative">
+                <textarea
+                  className="w-full h-44 rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/60 border border-white/10 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-fuchsia-400/40 focus:border-transparent shadow-inner"
+                  value={capabilities}
+                  onChange={e=>setCapabilities(e.target.value)}
+                  placeholder={"e.g.\nCAP-01: Customer Onboarding\nCAP-02: Billing & Invoicing\n..."}
+                />
+                <div className="pointer-events-none absolute inset-px rounded-[inherit] border border-white/5" />
+              </div>
+              <label className="block text-sm font-medium text-slate-200">Additional context</label>
+              <div className="relative">
+                <textarea
+                  className="w-full h-24 rounded-2xl bg-gradient-to-br from-slate-800/60 to-slate-900/60 border border-white/10 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-fuchsia-400/40 focus:border-transparent shadow-inner"
+                  value={context}
+                  onChange={e=>setContext(e.target.value)}
+                />
+                <div className="pointer-events-none absolute inset-px rounded-[inherit] border border-white/5" />
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-200">Batch size</label>
+                <input
+                  type="number"
+                  className="w-40 rounded-xl bg-slate-800/60 border border-white/10 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
+                  value={batch}
+                  onChange={e=>setBatch(parseInt(e.target.value||"15",10))}
+                />
+              </div>
+              <div className="flex flex-wrap gap-3 pt-2">
+                <PrimaryButton disabled={loading} loading={loading}>Map capabilities</PrimaryButton>
+                <SecondaryButton type="button" onClick={downloadXlsx}>⬇️ Download XLSX</SecondaryButton>
+              </div>
+              {error && (
+                <GlassCard padding="sm" className="border-rose-500/30 bg-rose-600/10 text-sm text-rose-200">❌ {error}</GlassCard>
+              )}
+            </div>
+          </div>
+        </GlassCard>
+      </form>
+
+      {/* Results */}
+      {result && (
+        <section className="space-y-4">
+          <h2 className="text-2xl font-semibold">Results</h2>
+          <GlassCard padding="none">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-white/5">
+                  <tr className="text-left text-slate-300">
+                    {result.columns.map(c => (<th className="p-3 font-semibold text-xs uppercase tracking-wide" key={c}>{c}</th>))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-white/5">
                   {result.rows.map((r, idx)=> (
-                    <tr key={idx} className="odd:bg-black/5 dark:odd:bg-white/5">
-                      {result.columns.map(c => (<td key={c} className="p-2 align-top">{String(r[c] ?? "")}</td>))}
+                    <tr key={idx} className="align-top hover:bg-white/3">
+                      {result.columns.map(c => (<td key={c} className="p-3 text-slate-200 align-top whitespace-pre-wrap">{String(r[c] ?? "")}</td>))}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </section>
-        )}
-      </div>
-    </main>
+          </GlassCard>
+        </section>
+      )}
+    </PageShell>
   );
 }
