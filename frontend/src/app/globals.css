@@ -23,8 +23,7 @@
 ---------------------------------------------------------------- */
 
 :root {
-  /* Default points to /background.jpg (safely ignored if missing). */
-  --app-bg-image: url(/background.jpg);
+  /* Use just the gradient overlay without trying to load a missing image */
   --app-bg-overlay: radial-gradient(at 20% 20%, rgba(99,102,241,0.18), transparent 60%),
                     radial-gradient(at 80% 70%, rgba(56,189,248,0.18), transparent 65%),
                     linear-gradient(to bottom right, rgba(0,0,0,0.85), rgba(0,0,0,0.9));
@@ -34,9 +33,9 @@
   position: fixed;
   inset: 0;
   z-index: -1;
-  background-image: var(--app-bg-image), var(--app-bg-overlay);
-  background-size: cover, cover;
-  background-position: center, center;
+  background-image: var(--app-bg-overlay);
+  background-size: cover;
+  background-position: center;
   background-repeat: no-repeat;
   background-attachment: fixed;
   pointer-events: none;
@@ -46,4 +45,24 @@
 
 @media (max-width: 640px) {
   .site-bg { background-attachment: scroll; }
+}
+
+/* Electron-specific styles */
+.electron-drag {
+  -webkit-app-region: drag;
+}
+
+.electron-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Always apply macOS-style spacing in Electron context since we know we're on macOS */
+@media (prefers-color-scheme: dark), (prefers-color-scheme: light) {
+  .electron-header-nav {
+    padding-left: 5rem; /* 80px - same as pl-20 */
+  }
+  
+  .electron-header-spacer {
+    height: 1.5rem; /* 24px - same as h-6 */
+  }
 }
