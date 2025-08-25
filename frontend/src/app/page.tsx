@@ -5,6 +5,7 @@ export default function Home() {
     { title: "Business Toolkit", emoji: "🔍", desc: "Pain point analysis, capability management, and strategic alignment tools.", href: "/toolkits/business", cta: "Open" },
     { title: "Applications Toolkit", emoji: "🏗️", desc: "Map and analyse the technology landscape.", href: "/toolkits/applications", cta: "Open" },
     { title: "Data, Information, and AI", emoji: "📊", desc: "Design data models, information architecture, and AI solutions.", href: "/toolkits/data-ai", cta: "Open" },
+    { title: "Graphic Design Toolkit", emoji: "🎨", desc: "AI-powered visual analysis, design consistency, and presentation optimization tools.", href: "/toolkits/graphic-design", cta: "Open" },
     { title: "Engagement Planning", emoji: "📅", desc: "Plan and structure client engagements.", href: "/toolkits/engagement", cta: "Open" },
     { title: "Intelligence Toolkit", emoji: "🧠", desc: "Analyze trends, insights, and intelligence patterns across organizational data.", href: "/toolkits/intelligence", cta: "Open", badge: "Coming Soon" },
   ];

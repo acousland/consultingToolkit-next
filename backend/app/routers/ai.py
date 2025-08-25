@@ -2404,3 +2404,60 @@ async def analyze_portfolio(payload: PortfolioAnalysisRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Portfolio analysis failed: {str(e)}")
+
+
+# Graphic Design Tools
+class SlideFeedback(BaseModel):
+    overall_score: int
+    visual_consistency: str
+    typography: str
+    color_harmony: str
+    layout_balance: str
+    suggestions: List[str]
+
+class SlideReview(BaseModel):
+    slide_number: int
+    image_path: str
+    feedback: SlideFeedback
+
+class OverallSummary(BaseModel):
+    average_score: float
+    key_strengths: List[str]
+    priority_improvements: List[str]
+
+class PowerPointReviewResponse(BaseModel):
+    presentation_name: str
+    total_slides: int
+    reviews: List[SlideReview]
+    overall_summary: OverallSummary
+
+@router.post("/graphic-design/powerpoint/review", response_model=PowerPointReviewResponse)
+async def review_powerpoint_presentation(presentation: UploadFile = File(...)):
+    """
+    Review a PowerPoint presentation for visual consistency and design quality.
+    Converts slides to images and analyzes each slide for design elements.
+    """
+    try:
+        from ..services.powerpoint_review import review_presentation
+        
+        if not presentation.filename or not (presentation.filename.lower().endswith('.pptx') or presentation.filename.lower().endswith('.ppt')):
+            raise HTTPException(status_code=400, detail="Please upload a valid PowerPoint file (.pptx or .ppt)")
+        
+        # Save uploaded file temporarily
+        import tempfile
+        import shutil
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as tmp_file:
+            shutil.copyfileobj(presentation.file, tmp_file)
+            tmp_path = tmp_file.name
+        
+        try:
+            # Process the presentation
+            result = await review_presentation(tmp_path, presentation.filename)
+            return result
+        finally:
+            # Clean up temporary file
+            os.unlink(tmp_path)
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PowerPoint review failed: {str(e)}")
