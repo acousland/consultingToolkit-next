@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from "react";
 import { ExcelDataInput } from "@/components/ExcelDataInput";
 import { StructuredExcelSelection, emptyStructuredExcelSelection } from "@/types/excel";
+import { API_BASE } from "@/lib/api";
 
 interface ProposalRow {
   id: string; original: string; group_id: string; proposed: string; action: string; rationale: string; merged_ids: string[];
@@ -56,7 +57,7 @@ export default function CleanupPage() {
         formData.append("sheet", excelData.sheet || "");
         formData.append("text_columns", JSON.stringify(excelData.textColumns));
         
-        const extractRes = await fetch("/api/ai/pain-points/extract/file", {
+        const extractRes = await fetch(`${API_BASE}/ai/pain-points/extract/file`, {
           method: "POST",
           body: formData
         });
@@ -73,7 +74,7 @@ export default function CleanupPage() {
       }
       
       // Now process the cleanup
-      const res = await fetch("/api/ai/pain-points/cleanup/propose", { 
+      const res = await fetch(`${API_BASE}/ai/pain-points/cleanup/propose`, { 
         method: "POST", 
         headers: { "content-type": "application/json" }, 
         body: JSON.stringify({ 
@@ -107,7 +108,7 @@ export default function CleanupPage() {
 
   async function applyChanges() {
     try {
-      const res = await fetch("/api/ai/pain-points/cleanup/apply", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ proposal }) });
+      const res = await fetch(`${API_BASE}/ai/pain-points/cleanup/apply`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ proposal }) });
       if(!res.ok) throw new Error(await res.text());
       const json = await res.json() as ApplyResponse;
       setFinalList(json.clean_pain_points);
@@ -116,7 +117,7 @@ export default function CleanupPage() {
 
   async function downloadReport() {
     try {
-      const res = await fetch("/api/ai/pain-points/cleanup/report.xlsx", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ proposal, summary }) });
+      const res = await fetch(`${API_BASE}/ai/pain-points/cleanup/report.xlsx`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ proposal, summary }) });
       if(!res.ok) throw new Error("Report failed");
       const blob = await res.blob(); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "cleanup_report.xlsx"; a.click(); URL.revokeObjectURL(url);
     } catch(e:any){ setError(e.message); }
