@@ -116,8 +116,8 @@ Generated on ${new Date().toLocaleString()}
   }
 
   return (
-    <main className="min-h-screen p-8">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="min-h-screen p-8 -mx-4 sm:-mx-6 lg:-mx-8 -mt-8">
+      <div className="mx-auto max-w-6xl space-y-6 pt-8">
         {/* Header */}
         <div className="space-y-2">
           <h1 className="text-4xl font-black">🎯 Individual Application to Capability Mapping</h1>
@@ -381,6 +381,6 @@ Generated on ${new Date().toLocaleString()}
           </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }

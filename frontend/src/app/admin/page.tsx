@@ -33,8 +33,8 @@ export default function Admin() {
     })();
   }, []);
   return (
-    <main className="min-h-screen p-8">
-      <div className="mx-auto max-w-5xl space-y-6">
+    <div className="min-h-screen p-8 -mx-4 sm:-mx-6 lg:-mx-8 -mt-8">
+      <div className="mx-auto max-w-5xl space-y-6 pt-8">
         <h1 className="text-4xl font-black">Admin & Testing</h1>
         <div className="grid gap-6 md:grid-cols-2">
           <div className="rounded-2xl border border-white/10 p-5 bg-black/40">
@@ -69,6 +69,6 @@ export default function Admin() {
           </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

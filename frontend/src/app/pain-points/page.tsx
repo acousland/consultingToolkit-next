@@ -68,7 +68,7 @@ export default function PainPoints() {
   }
 
   return (
-    <main className="min-h-screen">
+    <div className="min-h-screen -mx-4 sm:-mx-6 lg:-mx-8 -mt-8 px-4 sm:px-6 lg:px-8 pt-8">
       <div className="space-y-6">
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold">Pain Point Cleanup</h1>
@@ -160,6 +160,6 @@ export default function PainPoints() {
           </section>
         )}
       </div>
-    </main>
+    </div>
   );
 }

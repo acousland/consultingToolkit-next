@@ -124,7 +124,7 @@ export default function CleanupPage() {
   }
 
   return (
-    <main className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-950 via-zinc-900 to-slate-900 text-slate-100">
+    <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-zinc-900 to-slate-900 text-slate-100 -mx-4 sm:-mx-6 lg:-mx-8 -mt-8 min-h-screen">
       {/* Decorative gradients */}
       <div className="pointer-events-none absolute inset-0 [mask-image:radial-gradient(circle_at_center,black,transparent_70%)]">
         <div className="absolute -top-32 -left-32 h-96 w-96 bg-fuchsia-600/10 rounded-full blur-3xl animate-pulse" />
@@ -404,6 +404,6 @@ export default function CleanupPage() {
           </section>
         )}
       </div>
-    </main>
+    </div>
   );
 }
