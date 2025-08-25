@@ -15,7 +15,7 @@ export default function GraphicDesignToolkit() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {/* PowerPoint Reviewer */}
+  {/* Presentation Reviewer (PDF Recommended) */}
         <Link 
           href="/graphic-design/powerpoint-reviewer"
           className="group block p-6 bg-gradient-to-br from-violet-50 to-pink-50 dark:from-violet-900/20 dark:to-pink-900/20 rounded-xl border border-violet-200 dark:border-violet-800 hover:shadow-lg transition-all duration-200"
@@ -26,15 +26,15 @@ export default function GraphicDesignToolkit() {
             </div>
             <div>
               <h3 className="text-lg font-semibold group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
-                PowerPoint Reviewer
+                Presentation Reviewer <span className="ml-1 text-xs font-medium text-violet-500 dark:text-violet-300">PDF Only</span>
               </h3>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                AI-powered presentation analysis
+    AI-powered slide/page analysis
               </p>
             </div>
           </div>
           <p className="text-gray-700 dark:text-gray-300 text-sm">
-            Upload your PowerPoint presentation for comprehensive visual consistency analysis. Get slide-by-slide feedback on design, layout, typography, and visual hierarchy to enhance your presentation's professional impact.
+            Upload a PDF (export your deck) for page-by-page visual consistency analysis. Get actionable feedback on layout, typography, color harmony, and hierarchy to elevate your presentation.
           </p>
           <div className="mt-4 flex items-center text-violet-600 dark:text-violet-400 text-sm font-medium">
             Launch Tool

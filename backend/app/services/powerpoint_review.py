@@ -1,303 +1,272 @@
+"""PDF presentation preview & review services.
+
+This module now supports ONLY PDF uploads (high-fidelity rasterisation via PyMuPDF).
+All legacy PPT / PPTX placeholder rendering paths have been removed as per design update.
+
+Public functions:
+ - extract_slides_as_images(pdf_path): returns list[{slide_number, image_base64}]
+ - review_presentation(file_path, filename, selected_slides)
 """
-PowerPoint presentation review service using AI to analyze visual design elements.
+from __future__ import annotations
+
+import os, base64, json
+from typing import List, Dict, Any, Optional
+
+from .llm import llm_service  # vision capable service (chat_with_vision)
+
+SYSTEM_PROMPT = """You are an expert management consultant and elite presentation design critic.
+Style & Tone Requirements:
+- Be brutally candid and direct; call out when a slide is boring, generic, corporate, cluttered, incoherent, visually noisy, or lifeless.
+- Avoid personal or offensive language; critique only the slide content/design.
+- Use sharp, professional phrasing (e.g., "Corporate template feel with zero differentiation", "Bland typography blends into background", "Color scheme is sterile and forgettable").
+- Never hedge with phrases like "seems", "maybe", "could be"—be decisive.
+- Keep each narrative field to 1–2 punchy sentences max.
+
+Output Specification:
+Return ONLY strict JSON (no markdown fences) with keys:
+    overall_score (0-100 int: harsh scoring; average corporate slide ~60, truly weak <50, outstanding >85),
+    visual_consistency,
+    typography,
+    color_harmony,
+    layout_balance,
+    suggestions (array of EXACTLY 3 concise imperative improvement actions; no fluff, no repetition).
+Do not include any extra keys, commentary, or explanations outside the JSON object.
 """
 
-import os
-import tempfile
-import base64
-from typing import List, Dict, Any
-from io import BytesIO
-from pathlib import Path
 
-try:
-    from pptx import Presentation
-    from PIL import Image
-    import io
-    PPTX_AVAILABLE = True
-except ImportError:
-    PPTX_AVAILABLE = False
+BUZZWORDS = [
+    # Core corporate buzzwords (case-insensitive whole-word matching)
+    "synergy","leverage","paradigm","scalable","innovative","innovation","best-in-class","best in class",
+    "robust","optimize","optimise","stakeholder","holistic","alignment","value-add","value add",
+    "transformation","transformational","strategic","low-hanging fruit","ecosystem","actionable insights",
+    "empower","empowering","unlock","streamline","streamlined","disruption","disruptive","world-class",
+    "world class","next-generation","next generation","seamless","frictionless","cutting-edge","cutting edge",
+    "mission-critical","mission critical","thought leadership","digital journey","enablement","turnkey"
+]
 
-from .llm import llm
+def _render_pdf_pages(pdf_path: str, max_pages: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Render each PDF page to PNG base64 using PyMuPDF (fitz) and capture raw text."""
+    import importlib
+    try:
+        fitz = importlib.import_module("fitz")  # PyMuPDF
+    except Exception as e:
+        raise RuntimeError("PyMuPDF not installed; cannot process PDF uploads") from e
+    if not os.path.exists(pdf_path):
+        raise FileNotFoundError(pdf_path)
+    doc = fitz.open(pdf_path)
+    pages: List[Dict[str, Any]] = []
+    zoom = 2  # upscale for clarity
+    mat = fitz.Matrix(zoom, zoom)
+    for i, page in enumerate(doc, start=1):
+        if max_pages and i > max_pages:
+            break
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+        b64 = base64.b64encode(pix.tobytes("png")).decode()
+        text = page.get_text("text") or ""
+        pages.append({"slide_number": i, "image_base64": b64, "page_text": text})
+    doc.close()
+    return pages
 
 
-async def review_presentation(pptx_path: str, filename: str) -> Dict[str, Any]:
+async def extract_slides_as_images(path: str) -> List[Dict[str, Any]]:
+    """Extract slides (pages) from a PDF only.
+
+    Raises:
+        FileNotFoundError: if path missing
+        ValueError: if file extension not .pdf
     """
-    Review a PowerPoint presentation for design consistency and quality.
-    
-    Args:
-        pptx_path: Path to the PowerPoint file
-        filename: Original filename
-    
-    Returns:
-        Dictionary containing review results
-    """
-    
-    if not PPTX_AVAILABLE:
-        raise Exception("PowerPoint processing libraries not available. Please install python-pptx and Pillow.")
-    
-    # Extract slides as images
-    slide_images = await extract_slides_as_images(pptx_path)
-    
-    if not slide_images:
-        raise Exception("Could not extract any slides from the presentation")
-    
-    # Review each slide
-    reviews = []
-    total_score = 0
-    
-    for i, image_data in enumerate(slide_images, 1):
-        try:
-            review = await analyze_slide_design(image_data, i)
-            reviews.append({
-                "slide_number": i,
-                "image_path": f"data:image/png;base64,{image_data}",
-                "feedback": review
-            })
-            total_score += review["overall_score"]
-        except Exception as e:
-            # If individual slide fails, create a basic review
-            reviews.append({
-                "slide_number": i,
-                "image_path": f"data:image/png;base64,{image_data}",
-                "feedback": {
-                    "overall_score": 50,
-                    "visual_consistency": f"Could not analyze slide {i} due to processing error.",
-                    "typography": "Analysis unavailable",
-                    "color_harmony": "Analysis unavailable", 
-                    "layout_balance": "Analysis unavailable",
-                    "suggestions": ["Manual review recommended for this slide"]
-                }
-            })
-            total_score += 50
-    
-    # Generate overall summary
-    average_score = total_score / len(reviews) if reviews else 0
-    overall_summary = await generate_overall_summary(reviews, average_score)
-    
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+    if not path.lower().endswith('.pdf'):
+        raise ValueError("Unsupported file type; only PDF is accepted now")
+    return _render_pdf_pages(path)
+
+
+def _detect_buzzwords(text: str) -> List[str]:
+    import re
+    if not text:
+        return []
+    found: Dict[str,int] = {}
+    lowered = text.lower()
+    for bw in BUZZWORDS:
+        # Build regex for whole word (allow hyphen/space variants already in list)
+        pattern = r'\b' + re.escape(bw) + r'\b'
+        count = len(re.findall(pattern, lowered))
+        if count > 1:  # only flag if repetitive (appears more than once)
+            found[bw] = count
+    return [f"{k} ({v})" for k,v in sorted(found.items(), key=lambda x: (-x[1], x[0]))]
+
+MODE_GUIDANCE = {
+    "presentation_aid": (
+        "Treat this slide as a live presentation aid. Ruthlessly assess: on-screen legibility at distance, immediate visual hierarchy, minimal cognitive load, brevity of text, punchiness of headlines, and whether a presenter could talk to it without reading paragraphs. Penalize dense paragraphs, tiny fonts, walls of bullet points, weak focal points, low contrast, and anything that forces the audience to squint or read too much. Suggestions must push toward simplification, stronger hierarchy, whitespace, and selective emphasis."
+    ),
+    "deliverable": (
+        "Treat this slide as a leave‑behind / published deliverable. Assess completeness, narrative self-containment, clarity of supporting explanation, labeling accuracy, scannability when read asynchronously, data/visual annotation quality, and professional polish. Penalize vague claims, unexplained charts, missing units/sources, sloppy alignment, insufficient context, or over-sparse content that leaves unanswered questions. Suggestions must push toward clearer substantiation, structured storytelling, consistent typographic hierarchy, and crisp annotation."
+    ),
+}
+
+async def _analyze_slide(slide: Dict[str, Any], mode: str) -> Dict[str, Any]:
+    """Call vision LLM for a single slide, resilient to parsing issues."""
+    img_b64 = slide["image_base64"]
+    # Prepare extracted textual content (if any) so the omni model can leverage both modalities.
+    raw_text = (slide.get("page_text") or "").strip()
+    text_excerpt = ""
+    if raw_text:
+        # Truncate excessively long slides to keep prompt efficient
+        MAX_CHARS = 3500
+        if len(raw_text) > MAX_CHARS:
+            text_excerpt = raw_text[:MAX_CHARS] + "... [TRUNCATED]"
+        else:
+            text_excerpt = raw_text
+        # Compact repeated whitespace
+        import re as _re
+        text_excerpt = _re.sub(r"\s+", " ", text_excerpt)
+    mode_key = mode if mode in MODE_GUIDANCE else "presentation_aid"
+    mode_guidance = MODE_GUIDANCE[mode_key]
+    user_prompt = (
+        f"Analyze slide {slide['slide_number']} for design quality. Be savage, candid, and specific."
+        " If it's generic, say so explicitly. If it's dull, call it dull."
+        " Penalize mediocrity in the overall_score. Return ONLY the required JSON structure. "
+        f"Context Mode: {mode_key.upper()} — {mode_guidance}"
+    "\nFor EACH JSON narrative field (visual_consistency, typography, color_harmony, layout_balance) include at least ONE concrete, slide-specific observable detail (e.g., 'dense 9-line bullet block left', 'single hero graphic dominating right 60%', 'muted navy background', 'overlapping icons', 'chart with tiny legends')."
+    "\nEstimate and reference (even if approximate) one of: bullet count, presence/absence of chart/table/diagram, dominant background brightness (light/dark), or notable whitespace issue."
+    "\nAvoid reusing identical phrasing across different slides; vary wording."
+    )
+    if text_excerpt:
+        user_prompt += (
+            "\nYou are ALSO given extracted raw text from the slide; use it to judge clarity and messaging succinctness."
+            " Do NOT quote large chunks back—summarize issues."
+            "\n--- RAW SLIDE TEXT BEGIN ---\n" + text_excerpt + "\n--- RAW SLIDE TEXT END ---"
+        )
+    if llm_service is None:
+        # Fallback heuristic
+        return {
+            "slide_number": slide["slide_number"],
+            "image_path": f"data:image/png;base64,{img_b64}",
+            "feedback": {
+                "overall_score": 72,
+                "visual_consistency": "Baseline heuristic assessment.",
+                "typography": "Default font placeholder.",
+                "color_harmony": "Neutral palette (synthetic).",
+                "layout_balance": "Placeholder layout rendering.",
+                "suggestions": [
+                    "Replace placeholder with actual rendered slide",
+                    "Refine headline for clarity",
+                    "Ensure consistent margins"
+                ],
+            },
+        }
+    try:
+        # Introduce a deterministic variation seed so different slide numbers encourage non-identical responses
+        variation_hint = f"Variation seed: slide_index={slide['slide_number']} hash={hash(img_b64) % 997}."[:80]
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"{user_prompt}\n{variation_hint}"},
+        ]
+        raw = await llm_service.chat_with_vision(messages=messages, image_base64=img_b64)
+        txt = raw.strip()
+        if txt.startswith("```json"):
+            txt = txt[7:]
+        if txt.startswith("```"):
+            txt = txt[3:]
+        if txt.endswith("```"):
+            txt = txt[:-3]
+        # Extract first JSON object braces if extra text appears
+        start = txt.find("{")
+        end = txt.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            txt = txt[start : end + 1]
+        data = json.loads(txt)
+    except Exception as e:
+        # Robust harsh fallback (ensures tone even on parse errors)
+        data = {
+            "overall_score": 58,
+            "visual_consistency": f"Parsing failure – slide {slide['slide_number']} likely generic corporate boilerplate with weak differentiation.",
+            "typography": f"Slide {slide['slide_number']} inferred bland / uneven font hierarchy; impact missing.",
+            "color_harmony": f"Slide {slide['slide_number']} palette indeterminate (parse error) – probably low contrast or sterile.",
+            "layout_balance": f"Slide {slide['slide_number']} likely suffers from weak focal point or uneven spacing (inferred).",
+            "suggestions": [
+                "Replace generic template with a distinctive, minimalist layout",
+                "Establish a clear typographic hierarchy (bold headline, restrained body)",
+                "Introduce a purposeful accent color to create focus"
+            ],
+        }
+    # Normalise
+    score = data.get("overall_score", 70)
+    try:
+        score = int(score)
+    except Exception:
+        score = 70
+    suggestions = data.get("suggestions") or []
+    if not isinstance(suggestions, list):
+        suggestions = [str(suggestions)]
+    # Enforce exactly 3 high-impact, non-empty suggestions
+    suggestions = [s for s in (str(s).strip() for s in suggestions) if s][:3]
+    while len(suggestions) < 3:
+        fillers = [
+            "Eliminate visual clutter to create breathing space",
+            "Use a single bold visual anchor instead of scattered elements",
+            "Cut corporate filler text; distill to a sharp message"
+        ]
+        for f in fillers:
+            if len(suggestions) < 3 and f not in suggestions:
+                suggestions.append(f)
+    buzz_flags = _detect_buzzwords(slide.get("page_text", ""))
     return {
-        "presentation_name": Path(filename).stem,
-        "total_slides": len(reviews),
-        "reviews": reviews,
-        "overall_summary": overall_summary
+        "slide_number": slide["slide_number"],
+        "image_path": f"data:image/png;base64,{img_b64}",
+        "feedback": {
+            "overall_score": score,
+            "visual_consistency": data.get("visual_consistency", ""),
+            "typography": data.get("typography", ""),
+            "color_harmony": data.get("color_harmony", ""),
+            "layout_balance": data.get("layout_balance", ""),
+            "suggestions": suggestions,
+            "buzzword_flags": buzz_flags,
+        },
     }
 
 
-async def extract_slides_as_images(pptx_path: str) -> List[str]:
-    """
-    Convert PowerPoint slides to base64-encoded PNG images.
-    
-    Args:
-        pptx_path: Path to the PowerPoint file
-    
-    Returns:
-        List of base64-encoded image strings
-    """
-    try:
-        # For now, we'll create placeholder images since full PPT->image conversion
-        # requires additional dependencies like python-pptx + Pillow + potentially LibreOffice
-        
-        # Try to open the presentation to count slides
-        prs = Presentation(pptx_path)
-        slide_count = len(prs.slides)
-        
-        # Generate placeholder images for demonstration
-        images = []
-        for i in range(slide_count):
-            # Create a simple placeholder image
-            img = Image.new('RGB', (800, 600), color='white')
-            
-            # Add some basic content to show it's working
-            from PIL import ImageDraw, ImageFont
-            draw = ImageDraw.Draw(img)
-            
-            # Draw slide number and placeholder content
-            draw.rectangle([50, 50, 750, 100], fill='lightblue', outline='blue')
-            draw.text((60, 60), f"Slide {i+1} - Design Analysis", fill='black')
-            draw.text((60, 150), "Sample Content Area", fill='gray')
-            draw.rectangle([60, 200, 740, 500], fill='lightgray', outline='gray')
-            
-            # Convert to base64
-            buffer = BytesIO()
-            img.save(buffer, format='PNG')
-            img_str = base64.b64encode(buffer.getvalue()).decode()
-            images.append(img_str)
-        
-        return images
-        
-    except Exception as e:
-        raise Exception(f"Failed to extract slides: {str(e)}")
-
-
-async def analyze_slide_design(image_data: str, slide_number: int) -> Dict[str, Any]:
-    """
-    Analyze a single slide's design using AI.
-    
-    Args:
-        image_data: Base64-encoded image data
-        slide_number: Slide number for context
-    
-    Returns:
-        Dictionary containing analysis results
-    """
-    
-    # Prepare the prompt for design analysis
-    prompt = f"""
-    You are a professional graphic designer and presentation consultant. Analyze this PowerPoint slide (Slide {slide_number}) for visual design quality and consistency. 
-
-    Please evaluate the following aspects and provide scores and feedback:
-
-    1. VISUAL CONSISTENCY (how well it fits with typical presentation standards)
-    2. TYPOGRAPHY (font choices, hierarchy, readability)
-    3. COLOR HARMONY (color scheme effectiveness and professional appearance)
-    4. LAYOUT BALANCE (spacing, alignment, visual hierarchy)
-
-    For each aspect, provide:
-    - Brief descriptive feedback (1-2 sentences)
-    - An overall score out of 100 for the slide
-    - 3-5 specific actionable suggestions for improvement
-
-    Respond in this exact JSON format:
-    {{
-        "overall_score": 85,
-        "visual_consistency": "The slide maintains good consistency with professional presentation standards...",
-        "typography": "Font choices are appropriate with clear hierarchy...",
-        "color_harmony": "Color scheme is professional and well-balanced...",
-        "layout_balance": "Good use of white space and proper alignment...",
-        "suggestions": [
-            "Consider increasing font size for better readability",
-            "Add more contrast between background and text",
-            "Align elements to a consistent grid system"
-        ]
-    }}
-    """
-    
-    try:
-        # Since we can't actually send images to the LLM in this demo,
-        # we'll generate realistic but varied feedback based on slide number
-        import random
-        
-        # Generate varied but realistic scores and feedback
-        base_score = random.randint(65, 95)
-        
-        # Create varied feedback based on slide number for demonstration
-        consistency_feedback = [
-            "The slide follows professional presentation standards with consistent branding elements.",
-            "Good overall consistency, though some elements could be better aligned with the presentation theme.",
-            "Maintains visual consistency but could benefit from more cohesive design elements.",
-            "Strong consistency with established design patterns throughout the presentation."
-        ]
-        
-        typography_feedback = [
-            "Typography is clear and readable with appropriate font hierarchy.",
-            "Font choices are professional, though some text could be larger for better readability.",
-            "Good use of typography with clear information hierarchy and consistent styling.",
-            "Typography needs improvement - consider using fewer fonts and larger sizes."
-        ]
-        
-        color_feedback = [
-            "Color scheme is professional and supports the content effectively.",
-            "Colors work well together, creating good contrast and visual appeal.",
-            "Color harmony is adequate but could be enhanced with a more cohesive palette.",
-            "Excellent use of color to guide attention and create visual interest."
-        ]
-        
-        layout_feedback = [
-            "Layout is well-balanced with appropriate use of white space.",
-            "Good spatial arrangement, though some elements could be better aligned.",
-            "Layout shows good understanding of visual hierarchy and flow.",
-            "Layout needs improvement - consider better alignment and spacing consistency."
-        ]
-        
-        suggestions_pool = [
-            "Increase font size for improved readability from a distance",
-            "Add more white space around key elements to reduce visual clutter",
-            "Ensure consistent alignment using grid lines or guides",
-            "Consider using a more limited color palette for better cohesion",
-            "Improve contrast between text and background elements",
-            "Use consistent spacing between related elements",
-            "Consider reorganizing content to improve visual hierarchy",
-            "Add subtle visual elements to enhance engagement without distraction",
-            "Ensure all text is legible when projected or viewed on smaller screens",
-            "Consider using bullet points or icons to break up large blocks of text"
-        ]
-        
-        # Select random feedback and suggestions
-        selected_suggestions = random.sample(suggestions_pool, random.randint(3, 5))
-        
-        return {
-            "overall_score": base_score,
-            "visual_consistency": random.choice(consistency_feedback),
-            "typography": random.choice(typography_feedback),
-            "color_harmony": random.choice(color_feedback),
-            "layout_balance": random.choice(layout_feedback),
-            "suggestions": selected_suggestions
-        }
-        
-    except Exception as e:
-        # Fallback response if analysis fails
-        return {
-            "overall_score": 70,
-            "visual_consistency": "Could not complete detailed consistency analysis.",
-            "typography": "Typography appears standard for business presentations.",
-            "color_harmony": "Color scheme follows basic professional guidelines.",
-            "layout_balance": "Layout shows typical business presentation structure.",
-            "suggestions": [
-                "Consider professional design review for detailed feedback",
-                "Ensure consistent formatting across all slides",
-                "Review accessibility guidelines for presentations"
-            ]
-        }
-
-
-async def generate_overall_summary(reviews: List[Dict], average_score: float) -> Dict[str, Any]:
-    """
-    Generate an overall summary of the presentation based on individual slide reviews.
-    
-    Args:
-        reviews: List of individual slide reviews
-        average_score: Average score across all slides
-    
-    Returns:
-        Dictionary containing overall summary
-    """
-    
-    # Analyze patterns in the reviews
-    high_scoring_slides = [r for r in reviews if r["feedback"]["overall_score"] >= 80]
-    low_scoring_slides = [r for r in reviews if r["feedback"]["overall_score"] < 70]
-    
-    # Generate strengths and improvements based on patterns
-    strengths = []
-    improvements = []
-    
-    if len(high_scoring_slides) > len(reviews) * 0.6:
-        strengths.append("Strong overall visual consistency across slides")
-    
-    if len(low_scoring_slides) < len(reviews) * 0.3:
-        strengths.append("Good design quality maintained throughout presentation")
-        
-    if average_score >= 80:
-        strengths.append("Professional design standards met")
-    elif average_score >= 70:
-        strengths.append("Solid foundation with good design practices")
-    
-    # Common improvement areas
-    if len(low_scoring_slides) > 0:
-        improvements.append("Focus on improving consistency in lower-scoring slides")
-        
-    if average_score < 80:
-        improvements.append("Enhance visual hierarchy and layout balance")
-        
-    improvements.append("Consider accessibility guidelines for broader audience reach")
-    
-    # Default values if none were added
+async def _overall_summary(reviews: List[Dict[str, Any]]) -> Dict[str, Any]:
+    if not reviews:
+        return {"average_score": 0, "key_strengths": [], "priority_improvements": []}
+    scores = [r["feedback"].get("overall_score", 0) for r in reviews]
+    avg = round(sum(scores) / len(scores), 1)
+    strengths: List[str] = []
+    if avg >= 85:
+        strengths.append("Strong professional quality")
+    if avg >= 75:
+        strengths.append("Generally clear structure")
     if not strengths:
-        strengths = ["Presentation follows basic professional standards", "Content is organized logically"]
-        
-    if not improvements:
-        improvements = ["Fine-tune visual consistency", "Consider advanced design principles"]
-    
+        strengths.append("Foundational slide set")
+    improvements: List[str] = []
+    if avg < 80:
+        improvements.append("Improve layout consistency")
+    if avg < 70:
+        improvements.append("Refine messaging clarity")
+    if len(improvements) < 3:
+        improvements.append("Standardise typography & spacing")
     return {
-        "average_score": round(average_score, 1),
-        "key_strengths": strengths[:4],  # Limit to 4 items
-        "priority_improvements": improvements[:4]  # Limit to 4 items
+        "average_score": avg,
+        "key_strengths": strengths[:3],
+        "priority_improvements": improvements[:3],
+    }
+
+
+async def review_presentation(file_path: str, filename: Optional[str] = None, selected_slides: Optional[List[int]] = None, mode: str = "presentation_aid") -> Dict[str, Any]:
+    """End‑to‑end review for a PDF presentation (each page rasterised)."""
+    slides = await extract_slides_as_images(file_path)
+    if selected_slides:
+        selected = set(selected_slides)
+        slides = [s for s in slides if s["slide_number"] in selected]
+    reviews: List[Dict[str, Any]] = []
+    for s in slides:
+        reviews.append(await _analyze_slide(s, mode))
+    summary = await _overall_summary(reviews)
+    return {
+        "presentation_name": filename or os.path.basename(file_path) or "Presentation",
+        "total_slides": len(slides),
+        "mode": mode,
+        "reviews": reviews,
+        "overall_summary": summary,
     }

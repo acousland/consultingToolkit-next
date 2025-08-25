@@ -4,7 +4,7 @@ export default function DataAIToolkit() {
     { href: "/toolkits/data-ai/use-cases/ethics", label: "Use Case Ethics Review", emoji: "⚖️", disabled: false },
     { href: "/data/conceptual-model", label: "Conceptual Data Model Generator", emoji: "🧬", disabled: false },
     { href: "/data/application-map", label: "Data-Application Mapping", emoji: "🗺️", disabled: false },
-    { href: "/use-cases/customise", label: "AI Use Case Customiser", emoji: "🤖", disabled: false },
+    { href: "/data-information-ai/ai-use-case-customiser", label: "AI Use Case Customiser", emoji: "🤖", disabled: false },
   ];
   return (
     <main>

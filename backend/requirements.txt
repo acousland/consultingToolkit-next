@@ -14,5 +14,4 @@ celery
 rq
 python-dotenv
 pytest
-python-pptx
-Pillow
+PyMuPDF

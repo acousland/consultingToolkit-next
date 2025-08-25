@@ -14,7 +14,7 @@ const simpleStore = new Map();
 
 let mainWindow;
 let backendProcess = null;
-const BACKEND_PORT = 8000;
+const BACKEND_PORT = 8001;
 
 // Backend management
 function startBackend() {
@@ -29,8 +29,11 @@ function startBackend() {
 
   console.log('Starting backend from:', backendPath);
 
-  // Start Python backend
-  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+  // Start Python backend using virtual environment
+  const venvPath = path.join(__dirname, '../../.venv/bin/python');
+  const pythonCmd = require('fs').existsSync(venvPath) ? venvPath : (process.platform === 'win32' ? 'python' : 'python3');
+  console.log('Using Python:', pythonCmd);
+  
   backendProcess = spawn(pythonCmd, ['-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', BACKEND_PORT.toString()], {
     cwd: backendPath,
     stdio: isDev ? 'inherit' : 'pipe'
@@ -72,10 +75,13 @@ async function createWindow() {
       contextIsolation: true,
       enableRemoteModule: false,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: !isDev,
-      // Reduce security warnings in development
-      allowRunningInsecureContent: isDev,
-      experimentalFeatures: true
+  // Security: keep enabled even in dev to avoid warnings
+  webSecurity: true,
+  // Do NOT allow insecure mixed content
+  allowRunningInsecureContent: false,
+  // Disable experimental features unless explicitly required
+  experimentalFeatures: false,
+  // Additional hardening options (future): sandbox: true,
     },
     show: true, // Show immediately
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
@@ -83,6 +89,48 @@ async function createWindow() {
       ? path.join(__dirname, '../public/favicon.ico')
       : path.join(process.resourcesPath, 'app', 'favicon.ico')
   });
+
+  // CSP: apply a stricter policy ONLY in production; relax in dev to avoid blocking Next.js inline bootstrap.
+  try {
+    const session = mainWindow.webContents.session;
+    if (!session.__cspHookInstalled) {
+      session.webRequest.onHeadersReceived((details, callback) => {
+        const headers = details.responseHeaders || {};
+        const lower = Object.fromEntries(Object.keys(headers).map(k => [k.toLowerCase(), k]));
+        if (!lower['content-security-policy']) {
+          const prodCsp = [
+            "default-src 'self'",
+            "script-src 'self'", // no inline/eval in packaged build
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data:",
+            "font-src 'self'",
+            "connect-src 'self' https://api.openai.com http://localhost:8001",
+            "worker-src 'self' blob:",
+            "object-src 'none'",
+            "frame-ancestors 'none'",
+            "base-uri 'self'"
+          ].join('; ');
+          const devCsp = [
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data:",
+            "font-src 'self'",
+            "connect-src 'self' ws://localhost:* http://localhost:* https://api.openai.com",
+            "worker-src 'self' blob:",
+            "object-src 'none'",
+            "frame-ancestors 'none'",
+            "base-uri 'self'"
+          ].join('; ');
+          headers['Content-Security-Policy'] = [(process.env.NODE_ENV === 'production') ? prodCsp : devCsp];
+        }
+        callback({ responseHeaders: headers });
+      });
+      session.__cspHookInstalled = true;
+    }
+  } catch (e) {
+    console.warn('CSP setup failed:', e);
+  }
 
   // Load the app using electron-serve for proper static file serving
   await loadURL(mainWindow);
@@ -237,7 +285,7 @@ function createMenu() {
         {
           label: 'Documentation',
           click: () => {
-            shell.openExternal('http://localhost:8000/docs');
+            shell.openExternal('http://localhost:8001/docs');
           }
         }
       ]

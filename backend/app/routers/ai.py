@@ -10,6 +10,12 @@ from ..services.themes import map_themes_perspectives, PREDEFINED_THEMES, PREDEF
 from ..services.capabilities import map_capabilities, dataframe_to_xlsx_bytes as caps_to_xlsx
 from ..services.llm import llm, EFFECTIVE_TEMPERATURE
 from ..services.impact import estimate_impact, dataframe_to_xlsx_bytes as impact_to_xlsx
+from ..services.use_cases import (
+    summarise_company_context,
+    evaluate_use_cases as eval_use_cases_service,
+    UseCaseInput,
+    build_excel_bytes as use_cases_excel,
+)
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -90,6 +96,92 @@ async def evaluate_use_case(payload: UseCaseEvalRequest):
         "strategic_alignment": "Heuristic placeholder with optional context boost.",
     }
     return {"scores": scores, "rationale": rationale}
+
+
+# --------------------------- AI Use Case Customiser (Spec 7.3) ---------------------------
+
+class CompanyContextSummariseRequest(BaseModel):
+    context: str = Field(..., min_length=10)
+    force: bool = False
+
+
+class CompanyContextSummariseResponse(BaseModel):
+    summary: str
+    original_length: int
+    summary_length: int
+    summarised: bool
+    cached: bool
+
+
+@router.post("/use-cases/context/summarise", response_model=CompanyContextSummariseResponse)
+async def use_case_context_summarise(payload: CompanyContextSummariseRequest):
+    res = await summarise_company_context(payload.context, force=payload.force)
+    return res
+
+
+class UseCaseItem(BaseModel):
+    id: str = Field(..., min_length=1)
+    description: str = Field(..., min_length=5)
+
+
+class UseCaseBatchEvaluateRequest(BaseModel):
+    company_context: str = Field(..., min_length=30)
+    use_cases: List[UseCaseItem]
+    parallelism: int = Field(4, ge=1, le=20)
+
+
+class UseCaseEvaluationOut(BaseModel):
+    id: str
+    description: str
+    score: int = Field(..., ge=1, le=100)  # Update to 1-100 scale
+    reasoning: str
+    rank: int
+    raw_response: Optional[str] = None
+
+
+class UseCaseBatchEvaluateResponse(BaseModel):
+    scale: str
+    stats: Dict[str, Any]
+    evaluated: List[UseCaseEvaluationOut]
+
+
+@router.post("/use-cases/evaluate", response_model=UseCaseBatchEvaluateResponse)
+async def use_cases_evaluate(payload: UseCaseBatchEvaluateRequest):
+    # Deduplicate IDs but preserve order; warn if duplicates
+    seen = set()
+    filtered: List[UseCaseItem] = []
+    for uc in payload.use_cases:
+        if uc.id not in seen:
+            filtered.append(uc)
+            seen.add(uc.id)
+    service_inputs = [UseCaseInput(id=uc.id, description=uc.description) for uc in filtered]
+    result = await eval_use_cases_service(
+        company_context=payload.company_context,
+        use_cases=service_inputs,
+        parallelism=payload.parallelism,
+    )
+    evaluated = [UseCaseEvaluationOut(**rec) for rec in result["evaluated"]]
+    return {"scale": "1-100", "stats": result["stats"], "evaluated": evaluated}
+
+
+class UseCaseBatchEvaluateExcelRequest(UseCaseBatchEvaluateRequest):
+    pass
+
+
+@router.post("/use-cases/evaluate.xlsx")
+async def use_cases_evaluate_excel(payload: UseCaseBatchEvaluateExcelRequest):
+    service_inputs = [UseCaseInput(id=uc.id, description=uc.description) for uc in payload.use_cases]
+    result = await eval_use_cases_service(
+        company_context=payload.company_context,
+        use_cases=service_inputs,
+        parallelism=payload.parallelism,
+    )
+    xbytes = use_cases_excel(result["evaluated"], result["stats"])
+    return Response(
+        content=xbytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=ai_use_case_evaluations.xlsx"},
+    )
 
 
 class EthicsReviewRequest(BaseModel):
@@ -2420,6 +2512,13 @@ class SlideReview(BaseModel):
     image_path: str
     feedback: SlideFeedback
 
+class SlidePreview(BaseModel):
+    slide_number: int
+    image_path: str
+
+class SlidePreviewResponse(BaseModel):
+    slides: List[SlidePreview]
+
 class OverallSummary(BaseModel):
     average_score: float
     key_strengths: List[str]
@@ -2430,34 +2529,75 @@ class PowerPointReviewResponse(BaseModel):
     total_slides: int
     reviews: List[SlideReview]
     overall_summary: OverallSummary
+    mode: Optional[str] = None
+
+@router.post("/graphic-design/powerpoint/preview", response_model=SlidePreviewResponse)
+async def preview_powerpoint_slides(presentation: UploadFile = File(...)):
+    """Preview PDF presentation pages as images.
+
+    (Legacy path name retained for backward compatibility; now PDF-only.)
+    """
+    from ..services.powerpoint_review import extract_slides_as_images
+    if not presentation.filename:
+        raise HTTPException(status_code=400, detail="File required")
+    fname = presentation.filename.lower()
+    if not fname.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported now. Please export your presentation to PDF.")
+    import tempfile, shutil
+    # Preserve correct extension (.pdf) so downstream detection works
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+        shutil.copyfileobj(presentation.file, tmp_file)
+        tmp_path = tmp_file.name
+    try:
+        slide_images = await extract_slides_as_images(tmp_path)
+        slides = [
+            {
+                "slide_number": s["slide_number"],
+                "image_path": f"data:image/png;base64,{s['image_base64']}"
+            } for s in slide_images
+        ]
+        return {"slides": slides}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF preview failed: {e}")
+    finally:
+        os.unlink(tmp_path)
 
 @router.post("/graphic-design/powerpoint/review", response_model=PowerPointReviewResponse)
-async def review_powerpoint_presentation(presentation: UploadFile = File(...)):
-    """
-    Review a PowerPoint presentation for visual consistency and design quality.
-    Converts slides to images and analyzes each slide for design elements.
-    """
-    try:
-        from ..services.powerpoint_review import review_presentation
-        
-        if not presentation.filename or not (presentation.filename.lower().endswith('.pptx') or presentation.filename.lower().endswith('.ppt')):
-            raise HTTPException(status_code=400, detail="Please upload a valid PowerPoint file (.pptx or .ppt)")
-        
-        # Save uploaded file temporarily
-        import tempfile
-        import shutil
-        
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as tmp_file:
-            shutil.copyfileobj(presentation.file, tmp_file)
-            tmp_path = tmp_file.name
-        
+async def review_powerpoint_presentation(
+    presentation: UploadFile = File(...),
+    selected_slides: str = Form(None),
+    mode: str = Form("presentation_aid", description="presentation_aid or deliverable")
+):
+    """Review a PDF presentation for visual consistency and design quality (PDF-only)."""
+    from ..services.powerpoint_review import review_presentation
+    if not presentation.filename:
+        raise HTTPException(status_code=400, detail="File required")
+    fname = presentation.filename.lower()
+    if not fname.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported now. Export your deck to PDF.")
+    # Parse selected pages
+    slides_to_review = None
+    if selected_slides:
         try:
-            # Process the presentation
-            result = await review_presentation(tmp_path, presentation.filename)
-            return result
-        finally:
-            # Clean up temporary file
-            os.unlink(tmp_path)
-            
+            import json
+            slides_to_review = json.loads(selected_slides)
+        except Exception:
+            slides_to_review = None
+    import tempfile, shutil
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+        shutil.copyfileobj(presentation.file, tmp_file)
+        tmp_path = tmp_file.name
+    try:
+        result = await review_presentation(tmp_path, presentation.filename, slides_to_review, mode=mode)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"PowerPoint review failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"PDF review failed: {e}")
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+    return result
