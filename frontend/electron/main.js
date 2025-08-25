@@ -135,9 +135,10 @@ async function createWindow() {
   // Load the app using electron-serve for proper static file serving
   await loadURL(mainWindow);
   
-  // Enable dev tools only in development
-  if (isDev) {
-    mainWindow.webContents.openDevTools();
+  // DevTools: only auto-open if explicitly requested (set OPEN_DEVTOOLS=1)
+  const autoOpenDevTools = process.env.OPEN_DEVTOOLS === '1';
+  if (isDev && autoOpenDevTools) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
   // Ensure window is visible and focused
