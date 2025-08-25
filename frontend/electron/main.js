@@ -253,10 +253,8 @@ app.whenReady().then(async () => {
   await createWindow();
   createMenu();
   
-  // Start backend server
-  if (!isDev) {
-    startBackend();
-  }
+  // Start backend server in both dev and production
+  startBackend();
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
