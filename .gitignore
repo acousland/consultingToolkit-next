@@ -156,3 +156,16 @@ __pycache__/
 # Misc
 .vscode/
 .idea/
+
+# Additional cleanup patterns
+*.log
+*.map
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+archives/
+*.dmg
+*.blockmap

@@ -43,6 +43,7 @@ export default function NavBar() {
           <NavLink href="/toolkits/applications" label="Applications" />
           <NavLink href="/toolkits/data-ai" label="Data & AI" />
           <NavLink href="/toolkits/graphic-design" label="Design" />
+          <NavLink href="/brand/brand-consistency-checker" label="Brand" />
           <NavLink href="/toolkits/engagement" label="Engagement" />
           <NavLink href="/toolkits/intelligence" label="Intelligence" />
         </div>

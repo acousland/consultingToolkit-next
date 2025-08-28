@@ -16,6 +16,7 @@ from ..services.use_cases import (
     UseCaseInput,
     build_excel_bytes as use_cases_excel,
 )
+from ..services.brand_consistency import ingest_style_guide, ingest_deck, analyse_brand_consistency
 
 router = APIRouter(prefix="/ai", tags=["AI"])
 
@@ -2530,6 +2531,105 @@ class PowerPointReviewResponse(BaseModel):
     reviews: List[SlideReview]
     overall_summary: OverallSummary
     mode: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Brand Consistency Checker
+
+class StyleGuideIngestResponse(BaseModel):
+    style_guide_id: str
+    rules: List[Dict[str, Any]]
+    summary: str
+    characters: int
+
+
+@router.post("/brand/style-guide", response_model=StyleGuideIngestResponse)
+async def brand_style_guide_ingest(file: UploadFile = File(...)):
+    """Ingest a style guide PDF and extract brand rules."""
+    if not file.filename or not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF style guides supported")
+    import tempfile, shutil
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        path = tmp.name
+    try:
+        result = ingest_style_guide(path, file.filename)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Style guide ingestion failed: {e}")
+    finally:
+        try:
+            os.unlink(path)
+        except Exception:
+            pass
+
+
+class DeckIngestResponse(BaseModel):
+    deck_id: str
+    slides: List[Dict[str, Any]]
+    total_slides: int
+
+
+@router.post("/brand/deck", response_model=DeckIngestResponse)
+async def brand_deck_ingest(file: UploadFile = File(...)):
+    """Ingest a deck (PDF presentation) for brand consistency analysis."""
+    if not file.filename or not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF decks supported")
+    import tempfile, shutil
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        path = tmp.name
+    try:
+        result = ingest_deck(path, file.filename)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Deck ingestion failed: {e}")
+    finally:
+        try:
+            os.unlink(path)
+        except Exception:
+            pass
+
+
+class BrandAnalysisRequest(BaseModel):
+    style_guide_id: str
+    deck_id: str
+    selected_slides: Optional[List[int]] = None
+
+
+class BrandSlideResult(BaseModel):
+    slide_number: int
+    score: int
+    issues: List[str]
+    adherence: List[str]
+    recommendations: List[str]
+    image_path: str
+
+
+class BrandAnalysisSummary(BaseModel):
+    average_score: float
+    slides_evaluated: int
+    style_guide_rules: int
+    style_guide_id: str
+    deck_id: str
+
+
+class BrandAnalysisResponse(BaseModel):
+    results: List[BrandSlideResult]
+    summary: BrandAnalysisSummary
+    rules: List[Dict[str, Any]]
+
+
+@router.post("/brand/analyse", response_model=BrandAnalysisResponse)
+async def brand_analyse(payload: BrandAnalysisRequest):
+    try:
+        result = analyse_brand_consistency(payload.style_guide_id, payload.deck_id, payload.selected_slides)
+        # Pydantic model coercion
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Brand analysis failed: {e}")
 
 @router.post("/graphic-design/powerpoint/preview", response_model=SlidePreviewResponse)
 async def preview_powerpoint_slides(presentation: UploadFile = File(...)):

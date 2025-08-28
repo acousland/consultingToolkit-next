@@ -1,0 +1,15 @@
+{
+  "scripts": {
+    "test": "node test-suite.js",
+    "test:quick": "./quick-test.sh",
+    "test:backend": "cd backend && python -m pytest tests/",
+    "test:frontend": "cd frontend && npm run test",
+    "pre-deploy": "npm run test && npm run build",
+    "health-check": "curl -f http://localhost:8000/health && curl -f http://localhost:3000",
+    "start-dev": "concurrently \"cd backend && source venv/bin/activate && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000\" \"cd frontend && npm run dev\"",
+    "validate": "./quick-test.sh && echo 'All validations passed!'"
+  },
+  "devDependencies": {
+    "axios": "^1.11.0"
+  }
+}
