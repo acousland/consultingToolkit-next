@@ -9,7 +9,10 @@ client = TestClient(app)
 def test_health_endpoint_returns_ok():
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    data = response.json()
+    assert data["status"] == "ok"
+    assert "backend_version" in data
+    assert "build_time" in data
 
 
 def test_ai_router_ping():
