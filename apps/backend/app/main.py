@@ -6,6 +6,9 @@ load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routers.ai import router as ai_router
+from .routers.llm import router as llm_router
+from .routers.brand import router as brand_router
+from .routers.graphic_design import router as graphic_design_router
 from . import config
 from .middleware import RequestLoggingMiddleware, MaxUploadSizeMiddleware
 
@@ -22,7 +25,11 @@ app.add_middleware(CORSMiddleware,
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(MaxUploadSizeMiddleware)
 
-app.include_router(ai_router)
+# Include routers
+app.include_router(llm_router, prefix="/ai")  # /ai/llm/*
+app.include_router(brand_router, prefix="/ai")  # /ai/brand/*
+app.include_router(graphic_design_router, prefix="/ai")  # /ai/graphic-design/*
+app.include_router(ai_router)  # Legacy routes
 
 @app.get("/health")
 def health():

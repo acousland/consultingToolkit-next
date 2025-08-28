@@ -26,49 +26,6 @@ def ping():
     return {"message": "AI router alive"}
 
 
-class LLMStatus(BaseModel):
-    enabled: bool
-    provider: str
-    model: str
-    temperature: float
-
-
-@router.get("/llm/status", response_model=LLMStatus)
-def llm_status():
-    """Report whether an LLM is configured and which model is selected."""
-    # Derive provider/model from env; enabled reflects runtime object availability.
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    temp = float(os.getenv("OPENAI_TEMPERATURE", "0.2") or 0.2)
-    # Reflect effective temperature if model only supports default
-    eff_temp = EFFECTIVE_TEMPERATURE if llm is not None else temp
-    provider = "openai" if os.getenv("OPENAI_API_KEY") else "none"
-    return {
-        "enabled": llm is not None,
-        "provider": provider,
-        "model": model,
-        "temperature": eff_temp,
-    }
-
-
-@router.get("/llm/health")
-async def llm_health():
-    """Attempt a tiny round-trip to the configured LLM, if enabled."""
-    if llm is None:
-        raise HTTPException(status_code=503, detail="LLM not configured")
-    try:
-        from langchain_core.messages import HumanMessage  # lazy import
-        out = await __import__("asyncio").get_event_loop().run_in_executor(
-            None, llm.invoke, [HumanMessage(content="Return exactly: OK")]
-        )
-        content = getattr(out, "content", "")
-        ok = "OK" in content.strip()
-        if not ok:
-            raise RuntimeError("Unexpected LLM output")
-        return {"status": "ok"}
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"LLM call failed: {e}")
-
-
 class UseCaseEvalRequest(BaseModel):
     use_case: str = Field(..., description="Text describing the AI use case")
     company_context: Optional[str] = Field(None, description="Optional company context to tailor evaluation")
