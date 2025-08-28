@@ -6,13 +6,16 @@
     "test:frontend": "cd apps/frontend && npm run test",
     "pre-deploy": "npm run test && npm run build",
     "health-check": "curl -f http://localhost:8000/health && curl -f http://localhost:3000",
-    "start-dev": "concurrently \"cd apps/backend && source venv/bin/activate && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000\" \"cd apps/frontend && npm run dev\"",
+    "start-dev": "concurrently \"./tools/scripts/start-backend.sh\" \"./tools/scripts/start-frontend.sh\"",
+    "start:backend": "./tools/scripts/start-backend.sh",
+    "start:frontend": "./tools/scripts/start-frontend.sh",
     "validate": "./tools/testing/quick-test.sh && echo 'All validations passed!'",
     "cleanup": "./tools/scripts/cleanup-repo.sh",
     "cleanup:advanced": "./tools/scripts/advanced-cleanup.sh",
     "monitor": "python tools/testing/health-monitor.py"
   },
   "devDependencies": {
-    "axios": "^1.11.0"
+    "axios": "^1.11.0",
+    "concurrently": "^9.2.1"
   }
 }
