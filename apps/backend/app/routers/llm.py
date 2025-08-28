@@ -2,7 +2,7 @@
 import os
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from ..services.llm import llm, EFFECTIVE_TEMPERATURE
+from ..services.llm_resilient import llm_service
 
 router = APIRouter(prefix="/llm", tags=["LLM"])
 
@@ -14,42 +14,34 @@ class LLMStatus(BaseModel):
     temperature: float
 
 
+class LLMHealthResponse(BaseModel):
+    healthy: bool
+    model: str
+    response_preview: str = None
+    error: str = None
+
+
 @router.get("/status", response_model=LLMStatus)
 def llm_status():
     """Report whether an LLM is configured and which model is selected."""
-    # Derive provider/model from env; enabled reflects runtime object availability.
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    temp = float(os.getenv("OPENAI_TEMPERATURE", "0.2") or 0.2)
-    # Reflect effective temperature if model only supports default
-    eff_temp = EFFECTIVE_TEMPERATURE if llm is not None else temp
-    provider = "openai" if os.getenv("OPENAI_API_KEY") else "none"
+    config = llm_service.configs["default"]
     return {
-        "enabled": llm is not None,
-        "provider": provider,
-        "model": model,
-        "temperature": eff_temp,
+        "enabled": llm_service.is_available("default"),
+        "provider": "openai" if llm_service.api_key else "none",
+        "model": config.model,
+        "temperature": config.temperature,
     }
 
 
-@router.get("/health")
+@router.get("/health", response_model=LLMHealthResponse)
 async def llm_health():
     """Test if the configured LLM can accept requests."""
-    if llm is None:
-        raise HTTPException(status_code=503, detail="No LLM configured")
+    health_result = await llm_service.health_check("default")
     
-    try:
-        # Simple test query
-        messages = [{"role": "user", "content": "Say OK"}]
-        response = await llm.ainvoke(messages)
-        if not response or not response.content:
-            raise HTTPException(status_code=503, detail="LLM returned empty response")
-        return {
-            "status": "healthy",
-            "test_response": response.content[:50],  # First 50 chars
-            "provider": "openai" if os.getenv("OPENAI_API_KEY") else "none"
-        }
-    except Exception as e:
+    if not health_result["healthy"]:
         raise HTTPException(
             status_code=503, 
-            detail=f"LLM health check failed: {str(e)}"
+            detail=health_result.get("error", "LLM health check failed")
         )
+    
+    return health_result
