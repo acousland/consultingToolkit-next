@@ -2,7 +2,7 @@
   "name": "consulting-toolkit",
   "version": "1.0.0",
   "description": "A comprehensive suite of business consulting tools",
-  "main": "electron/main.js",
+      "main": "electron/main.js",
   "homepage": "./",
   "private": true,
   "author": "Consulting Toolkit Team",
@@ -24,7 +24,12 @@
     "electron:dev": "concurrently \"npm run start-dev\" \"wait-on http://localhost:3000 && SKIP_BACKEND_START=true electron electron/main.js\"",
     "electron:build": "npm run build:frontend && electron-builder",
     "electron:dist": "npm run build:frontend && electron-builder --publish=never",
-    "electron:pack": "npm run build:frontend && electron-builder --dir"
+    "electron:pack": "npm run build:frontend && electron-builder --dir",
+    "dev:electron": "./tools/scripts/dev-electron.sh",
+    "build:electron": "./tools/scripts/build-electron.sh",
+    "run:backend": "./tools/scripts/run-backend.sh",
+    "run:frontend": "./tools/scripts/run-frontend.sh",
+    "run:fullstack": "./tools/scripts/run-fullstack.sh"
   },
   "devDependencies": {
     "axios": "^1.11.0",
@@ -34,8 +39,9 @@
     "wait-on": "^8.0.4"
   },
   "dependencies": {
-    "electron-is-dev": "^3.0.1",
-    "electron-serve": "^2.1.1"
+  "electron-is-dev": "^3.0.1",
+  "electron-serve": "^2.1.1",
+  "express": "^4.19.2"
   },
   "build": {
     "appId": "com.consultingtoolkit.app",
