@@ -14,13 +14,13 @@ const simpleStore = new Map();
 
 let mainWindow;
 let backendProcess = null;
-const BACKEND_PORT = 8001;
+const BACKEND_PORT = process.env.BACKEND_PORT || 8000; // Match backend default
 
 // Backend management
-function startBackend() {
+async function startBackend() {
   if (backendProcess) {
     console.log('Backend already running');
-    return;
+    return true;
   }
 
   const backendPath = isDev 
@@ -36,7 +36,8 @@ function startBackend() {
   
   backendProcess = spawn(pythonCmd, ['-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', BACKEND_PORT.toString()], {
     cwd: backendPath,
-    stdio: isDev ? 'inherit' : 'pipe'
+    stdio: isDev ? 'inherit' : 'pipe',
+    env: { ...process.env, BACKEND_PORT: BACKEND_PORT.toString() }
   });
 
   backendProcess.on('error', (error) => {
@@ -49,10 +50,21 @@ function startBackend() {
     backendProcess = null;
   });
 
-  // Give backend time to start
-  setTimeout(() => {
-    console.log('Backend should be ready');
-  }, 3000);
+  // Wait for backend to be ready
+  console.log('Waiting for backend to start...');
+  const backendReady = await waitForBackend(`http://localhost:${BACKEND_PORT}`);
+  
+  if (backendReady) {
+    console.log('Backend started successfully');
+    return true;
+  } else {
+    console.error('Backend failed to start within timeout');
+    if (backendProcess) {
+      backendProcess.kill();
+      backendProcess = null;
+    }
+    return false;
+  }
 }
 
 function stopBackend() {
@@ -63,18 +75,48 @@ function stopBackend() {
   }
 }
 
-async function waitForBackend(url, attempts = 30, delayMs = 300) {
+async function waitForBackend(url, attempts = 60, delayMs = 1000) {
+  console.log(`Waiting for backend at ${url} (max ${attempts * delayMs / 1000}s)`);
   for (let i = 0; i < attempts; i++) {
     try {
-      const res = await fetch(url + '/health', { method: 'GET' });
-      if (res.ok) return true;
-    } catch (_) {}
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      
+      const res = await fetch(url + '/health', { 
+        method: 'GET',
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (res.ok) {
+        const data = await res.json();
+        console.log('Backend health check passed:', data);
+        return true;
+      } else {
+        console.log(`Health check failed with status: ${res.status}`);
+      }
+    } catch (error) {
+      console.log(`Health check attempt ${i + 1}/${attempts} failed:`, error.message);
+    }
     await new Promise(r => setTimeout(r, delayMs));
   }
   return false;
 }
 
 async function createWindow() {
+  // Start backend first and wait for it to be ready
+  const backendStarted = await startBackend();
+  if (!backendStarted) {
+    console.error('Failed to start backend - app may not function correctly');
+    // Show error dialog
+    const { dialog } = require('electron');
+    await dialog.showErrorBox(
+      'Backend Startup Failed',
+      `Failed to start the backend server on port ${BACKEND_PORT}. The application may not function correctly. Please check the console for errors.`
+    );
+  }
+
   // Create the browser window
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -115,7 +157,7 @@ async function createWindow() {
             "style-src 'self' 'unsafe-inline'",
             "img-src 'self' data:",
             "font-src 'self'",
-            "connect-src 'self' https://api.openai.com http://localhost:8001",
+            "connect-src 'self' https://api.openai.com http://localhost:" + BACKEND_PORT,
             "worker-src 'self' blob:",
             "object-src 'none'",
             "frame-ancestors 'none'",
@@ -143,11 +185,7 @@ async function createWindow() {
     console.warn('CSP setup failed:', e);
   }
 
-  // Ensure backend is responsive before loading (avoid UI race)
-  const backendReady = await waitForBackend(`http://localhost:${BACKEND_PORT}`);
-  if (!backendReady) {
-    console.warn('Backend not responsive after wait window will still load');
-  }
+  // Load the frontend application
   await loadURL(mainWindow);
   
   // DevTools: only auto-open if explicitly requested (set OPEN_DEVTOOLS=1)
@@ -258,9 +296,12 @@ function createMenu() {
       submenu: [
         {
           label: 'Restart Backend',
-          click: () => {
+          click: async () => {
             stopBackend();
-            setTimeout(startBackend, 1000);
+            const restarted = await startBackend();
+            if (!restarted) {
+              dialog.showErrorBox('Restart Failed', 'Failed to restart the backend server.');
+            }
           }
         },
         {
@@ -301,7 +342,7 @@ function createMenu() {
         {
           label: 'Documentation',
           click: () => {
-            shell.openExternal('http://localhost:8001/docs');
+            shell.openExternal(`http://localhost:${BACKEND_PORT}/docs`);
           }
         }
       ]
@@ -314,11 +355,8 @@ function createMenu() {
 
 // App event listeners
 app.whenReady().then(async () => {
-  await createWindow();
+  await createWindow(); // Backend is started inside createWindow now
   createMenu();
-  
-  // Start backend server in both dev and production
-  startBackend();
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -369,8 +407,8 @@ ipcMain.handle('get-backend-status', () => {
   };
 });
 
-ipcMain.handle('restart-backend', () => {
+ipcMain.handle('restart-backend', async () => {
   stopBackend();
-  setTimeout(startBackend, 1000);
-  return true;
+  const restarted = await startBackend();
+  return restarted;
 });
