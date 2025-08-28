@@ -1,27 +1,15 @@
 {
-  "name": "consulting-toolkit",
+  "name": "consulting-toolkit-frontend",
   "version": "1.0.0",
-  "description": "A comprehensive suite of business consulting tools",
-  "main": "electron/main.js",
-  "homepage": "./",
+  "description": "Frontend for the consulting toolkit",
   "private": true,
-  "author": "Consulting Toolkit Team",
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
-    "build-electron": "NEXT_CONFIG_FILE=next.config.electron.js next build && electron-builder",
     "start": "next start",
-    "lint": "next lint",
-    "electron": "electron .",
-    "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "dist": "NEXT_CONFIG_FILE=next.config.electron.js next build && electron-builder --publish=never",
-    "pack": "NEXT_CONFIG_FILE=next.config.electron.js next build && electron-builder --dir",
-    "postinstall": "electron-builder install-app-deps && cd node_modules/@img && ln -sf sharp-darwin-arm64 sharp-darwin-x64 || true"
+    "lint": "next lint"
   },
   "dependencies": {
-    "electron-is-dev": "^3.0.1",
-    "electron-serve": "^2.1.1",
-    "electron-store": "^10.1.0",
     "next": "15.4.6",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -33,71 +21,9 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "concurrently": "^9.2.0",
-    "electron": "^37.3.1",
-    "electron-builder": "^26.0.12",
     "eslint": "^9",
     "eslint-config-next": "15.4.6",
     "tailwindcss": "^4",
-    "typescript": "^5",
-    "wait-on": "^8.0.4"
-  },
-  "build": {
-    "appId": "com.consultingtoolkit.app",
-    "productName": "Consulting Toolkit",
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "out/**/*",
-      "electron/**/*",
-      "node_modules/**/*",
-      "!node_modules/@img/**",
-      "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "../backend",
-        "to": "backend",
-        "filter": [
-          "**/*",
-          "!**/__pycache__",
-          "!**/test_*",
-          "!**/*.pyc"
-        ]
-      }
-    ],
-    "nodeGypRebuild": false,
-    "buildDependenciesFromSource": false,
-    "npmRebuild": false,
-    "mac": {
-      "category": "public.app-category.business",
-      "icon": "public/icon.icns",
-      "hardenedRuntime": true,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
-      "gatekeeperAssess": false,
-      "target": {
-        "target": "dmg",
-        "arch": [
-          "arm64"
-        ]
-      }
-    },
-    "win": {
-      "target": "nsis",
-      "icon": "public/icon.ico"
-    },
-    "linux": {
-      "target": "AppImage",
-      "category": "Office",
-      "icon": "public/icon.png"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
-    }
+    "typescript": "^5"
   }
 }

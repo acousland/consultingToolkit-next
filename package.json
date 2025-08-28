@@ -1,4 +1,11 @@
 {
+  "name": "consulting-toolkit",
+  "version": "1.0.0",
+  "description": "A comprehensive suite of business consulting tools",
+  "main": "electron/main.js",
+  "homepage": "./",
+  "private": true,
+  "author": "Consulting Toolkit Team",
   "scripts": {
     "test": "node tools/testing/test-suite.js",
     "test:quick": "./tools/testing/quick-test.sh",
@@ -12,10 +19,64 @@
     "validate": "./tools/testing/quick-test.sh && echo 'All validations passed!'",
     "cleanup": "./tools/scripts/cleanup-repo.sh",
     "cleanup:advanced": "./tools/scripts/advanced-cleanup.sh",
-    "monitor": "python tools/testing/health-monitor.py"
+    "monitor": "python tools/testing/health-monitor.py",
+    "build:frontend": "cd apps/frontend && npm run build",
+    "electron:dev": "concurrently \"npm run start-dev\" \"wait-on http://localhost:3000 && electron electron/main.js\"",
+    "electron:build": "npm run build:frontend && electron-builder",
+    "electron:dist": "npm run build:frontend && electron-builder --publish=never",
+    "electron:pack": "npm run build:frontend && electron-builder --dir"
   },
   "devDependencies": {
     "axios": "^1.11.0",
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "electron": "^37.3.1",
+    "electron-builder": "^26.0.12",
+    "wait-on": "^8.0.4"
+  },
+  "dependencies": {
+    "electron-is-dev": "^3.0.1",
+    "electron-serve": "^2.1.1"
+  },
+  "build": {
+    "appId": "com.consultingtoolkit.app",
+    "productName": "Consulting Toolkit",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "apps/frontend/out/**/*",
+      "electron/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "apps/backend",
+        "to": "apps/backend",
+        "filter": [
+          "**/*",
+          "!**/__pycache__",
+          "!**/test_*",
+          "!**/*.pyc",
+          "!venv/**"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": {
+        "target": "dmg",
+        "arch": [
+          "arm64"
+        ]
+      }
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Office"
+    }
   }
 }
