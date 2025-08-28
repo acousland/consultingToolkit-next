@@ -41,10 +41,18 @@ def allowed_origins() -> List[str]:
 MAX_UPLOAD_BYTES = int(_env("MAX_UPLOAD_BYTES", "10485760"))  # 10MB default
 MAX_ROWS_DEFAULT = int(_env("MAX_ROWS", "5000"))
 
+# LLM configuration
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")  # Default to available model
+TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0.2"))
 
-# LLM / model configuration centralised (actual model init remains in services.llm)
-OPENAI_MODEL = _env("OPENAI_MODEL", "gpt-4o-mini") or "gpt-4o-mini"
-OPENAI_TEMPERATURE = float(_env("OPENAI_TEMPERATURE", "0.2") or 0.2)
+# Rate limiting configuration
+RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
+RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # seconds
+
+# Security configuration
+API_KEYS = os.getenv("API_KEYS", "").split(",") if os.getenv("API_KEYS") else []
+ALLOWED_IPS = os.getenv("ALLOWED_IPS", "").split(",") if os.getenv("ALLOWED_IPS") else []
+
 
 def as_dict() -> dict:
     return {
@@ -54,5 +62,5 @@ def as_dict() -> dict:
         "max_upload_bytes": MAX_UPLOAD_BYTES,
         "max_rows_default": MAX_ROWS_DEFAULT,
         "openai_model": OPENAI_MODEL,
-        "temperature": OPENAI_TEMPERATURE,
+        "temperature": TEMPERATURE,
     }

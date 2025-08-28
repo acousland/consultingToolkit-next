@@ -11,6 +11,7 @@ from .routers.brand import router as brand_router
 from .routers.graphic_design import router as graphic_design_router
 from . import config
 from .middleware import RequestLoggingMiddleware, MaxUploadSizeMiddleware, ErrorHandlerMiddleware, SecurityHeadersMiddleware
+from .security import RateLimitMiddleware
 
 app = FastAPI(title="Consulting Toolkit API", version=config.backend_version())
 
@@ -26,6 +27,11 @@ app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(MaxUploadSizeMiddleware)
 app.add_middleware(ErrorHandlerMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(
+    RateLimitMiddleware, 
+    max_requests=config.RATE_LIMIT_REQUESTS,
+    time_window=config.RATE_LIMIT_WINDOW
+)
 
 # Include routers
 app.include_router(llm_router, prefix="/ai")  # /ai/llm/*
