@@ -24,7 +24,7 @@ if curl -s http://localhost:8000/health > /dev/null; then
     print_status "✅ Backend is healthy" $GREEN
 else
     print_status "❌ Backend not responding - start it first!" $RED
-    echo "Run: cd backend && source venv/bin/activate && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &"
+    echo "Run: cd apps/backend && source venv/bin/activate && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &"
     exit 1
 fi
 
@@ -34,7 +34,7 @@ if curl -s http://localhost:3000 > /dev/null; then
     print_status "✅ Frontend is accessible" $GREEN
 else
     print_status "❌ Frontend not responding - start it first!" $RED
-    echo "Run: cd frontend && npm run dev &"
+    echo "Run: cd apps/frontend && npm run dev &"
     exit 1
 fi
 
@@ -72,10 +72,10 @@ done
 # Check for critical files
 print_status "Checking critical files..." $BLUE
 critical_files=(
-    "backend/app/services/brand_consistency.py"
-    "backend/app/routers/ai.py"  
-    "frontend/src/components/NavBar.tsx"
-    "frontend/src/app/brand/brand-consistency-checker/page.tsx"
+    "apps/backend/app/services/brand_consistency.py"
+    "apps/backend/app/routers/ai.py"  
+    "apps/frontend/src/components/NavBar.tsx"
+    "apps/frontend/src/app/brand/brand-consistency-checker/page.tsx"
 )
 
 for file in "${critical_files[@]}"; do

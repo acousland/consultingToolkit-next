@@ -137,14 +137,14 @@ class TestSuite {
     // File System Tests
     async testCriticalFiles() {
         const criticalFiles = [
-            './backend/app/services/brand_consistency.py',
-            './backend/app/routers/ai.py',
-            './frontend/src/components/NavBar.tsx',
-            './frontend/src/app/brand/brand-consistency-checker/page.tsx'
+            './apps/backend/app/services/brand_consistency.py',
+            './apps/backend/app/routers/ai.py',
+            './apps/frontend/src/components/NavBar.tsx',
+            './apps/frontend/src/app/brand/brand-consistency-checker/page.tsx'
         ];
 
         for (const file of criticalFiles) {
-            const filePath = path.resolve(__dirname, file);
+            const filePath = path.resolve(__dirname, '../../', file);
             if (!fs.existsSync(filePath)) {
                 throw new Error(`Critical file missing: ${file}`);
             }

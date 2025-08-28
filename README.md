@@ -2,19 +2,21 @@
 
 This repository contains the split-out Next.js frontend and FastAPI backend.
 
-- Frontend: `frontend/` (Next.js + TypeScript + Tailwind)
-- Backend: `backend/` (FastAPI + Uvicorn)
+- Frontend: `apps/frontend/` (Next.js + TypeScript + Tailwind)
+- Backend: `apps/backend/` (FastAPI + Uvicorn)
 
 Documentation:
-- Architecture overview: [architecture.md](./architecture.md)
-- Changelog: [CHANGELOG.md](./CHANGELOG.md)
+- Architecture overview: [docs/architecture.md](./docs/architecture.md)
+- Functional specification: [docs/functional-spec.md](./docs/functional-spec.md)
+- Changelog: [docs/CHANGELOG.md](./docs/CHANGELOG.md)
+- Testing guide: [docs/TESTING_CHECKLIST.md](./docs/TESTING_CHECKLIST.md)
 
 ## Dev Quickstart
 
 Backend:
 
 ```bash
-cd backend
+cd apps/backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -36,7 +38,7 @@ This avoids exporting vars in your shell each time. You can still override via s
 Frontend:
 
 ```bash
-cd frontend
+cd apps/frontend
 # Ensure .env.local has: NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
 npm install
 npm run dev
@@ -46,13 +48,25 @@ Open http://localhost:3000 (or whichever port Next.js selects).
 
 ## Testing
 
-Run frontend lint checks and backend tests with:
+Run comprehensive tests with:
 
 ```bash
-./scripts/test-all.sh
+npm run test
 ```
 
-The script installs dependencies as needed, lints the frontend, and executes Python tests for the backend.
+Run quick development tests with:
+
+```bash
+npm run test:quick
+```
+
+Run backend tests only:
+
+```bash
+npm run test:backend
+```
+
+Run the test-suite.js, quick-test.sh, health monitoring, and cleanup scripts from the `tools/` directory.
 
 ## Docker Compose
 
