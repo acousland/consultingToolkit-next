@@ -21,7 +21,7 @@
     "cleanup:advanced": "./tools/scripts/advanced-cleanup.sh",
     "monitor": "python tools/testing/health-monitor.py",
     "build:frontend": "cd apps/frontend && npm run build",
-    "electron:dev": "concurrently \"npm run start-dev\" \"wait-on http://localhost:3000 && electron electron/main.js\"",
+    "electron:dev": "concurrently \"npm run start-dev\" \"wait-on http://localhost:3000 && SKIP_BACKEND_START=true electron electron/main.js\"",
     "electron:build": "npm run build:frontend && electron-builder",
     "electron:dist": "npm run build:frontend && electron-builder --publish=never",
     "electron:pack": "npm run build:frontend && electron-builder --dir"

@@ -105,16 +105,39 @@ async function waitForBackend(url, attempts = 60, delayMs = 1000) {
 }
 
 async function createWindow() {
-  // Start backend first and wait for it to be ready
-  const backendStarted = await startBackend();
-  if (!backendStarted) {
-    console.error('Failed to start backend - app may not function correctly');
-    // Show error dialog
-    const { dialog } = require('electron');
-    await dialog.showErrorBox(
-      'Backend Startup Failed',
-      `Failed to start the backend server on port ${BACKEND_PORT}. The application may not function correctly. Please check the console for errors.`
-    );
+  // In development mode with npm run electron:dev, the backend is already started by start-dev
+  // Only start our own backend if we're in production or if no backend is detected
+  const isDevelopmentWithExistingBackend = isDev && process.env.SKIP_BACKEND_START === 'true';
+  
+  let backendStarted = true; // Assume success
+  
+  if (!isDevelopmentWithExistingBackend) {
+    // Check if backend is already running
+    const backendAlreadyRunning = await waitForBackend(`http://localhost:${BACKEND_PORT}`, 1, 100);
+    
+    if (backendAlreadyRunning) {
+      console.log('Backend already running - skipping backend startup');
+      backendStarted = true;
+    } else {
+      // Start backend and wait for it to be ready
+      backendStarted = await startBackend();
+      if (!backendStarted) {
+        console.error('Failed to start backend - app may not function correctly');
+        // Show error dialog
+        const { dialog } = require('electron');
+        await dialog.showErrorBox(
+          'Backend Startup Failed',
+          `Failed to start the backend server on port ${BACKEND_PORT}. The application may not function correctly. Please check the console for errors.`
+        );
+      }
+    }
+  } else {
+    // In development with existing backend, just wait for it to be ready
+    console.log('Development mode: waiting for existing backend...');
+    backendStarted = await waitForBackend(`http://localhost:${BACKEND_PORT}`, 30, 1000);
+    if (!backendStarted) {
+      console.error('Existing backend not responding');
+    }
   }
 
   // Create the browser window
