@@ -35,26 +35,94 @@ let backendProcess = null;
 const BACKEND_PORT = process.env.BACKEND_PORT || 8000; // Match backend default
 
 // Backend management
+async function checkBackendDependencies() {
+  console.log('Checking backend dependencies...');
+  
+  try {
+    // Try to run the dependency checker
+    const { spawn } = require('child_process');
+    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const checkScript = app.isPackaged 
+      ? path.join(process.resourcesPath, 'check-backend-deps.py')
+      : path.join(__dirname, '../check-backend-deps.py');
+    
+    if (!require('fs').existsSync(checkScript)) {
+      console.log('Dependency checker not found, skipping check');
+      return true;
+    }
+    
+    return new Promise((resolve) => {
+      const checkProcess = spawn(pythonCmd, [checkScript], {
+        stdio: 'inherit'
+      });
+      
+      checkProcess.on('exit', (code) => {
+        if (code === 0) {
+          console.log('✅ Backend dependencies check passed');
+          resolve(true);
+        } else {
+          console.log('⚠️  Backend dependencies check failed, but continuing...');
+          resolve(true); // Continue anyway, let the backend startup attempt to fail gracefully
+        }
+      });
+      
+      checkProcess.on('error', (error) => {
+        console.log('Dependency check error:', error.message);
+        resolve(true); // Continue anyway
+      });
+    });
+  } catch (error) {
+    console.log('Failed to run dependency check:', error.message);
+    return true; // Continue anyway
+  }
+}
+
 async function startBackend() {
+  console.log('=== startBackend() called ===');
+  console.log('app.isPackaged:', app.isPackaged);
+  console.log('backendProcess:', !!backendProcess);
+  
   if (backendProcess) {
     console.log('Backend already running');
     return true;
   }
 
-  // Never auto-start backend inside packaged app (no venv shipped)
+  // Try to start backend even in packaged apps if Python and dependencies are available
   if (app.isPackaged) {
-    console.log('Packaged build detected: backend auto-start disabled. Expect external API/backend running separately.');
+    console.log('Packaged build detected: attempting backend startup with system Python...');
+    // Don't return false - let it try to start the backend
+  }
+
+  // Check and install dependencies if needed
+  console.log('Checking backend dependencies...');
+  const depsOk = await checkBackendDependencies();
+  console.log('Dependencies check result:', depsOk);
+  if (!depsOk) {
+    console.log('Backend dependencies not available, skipping backend startup');
     return false;
   }
 
   console.log('isDev:', isDev, '__dirname:', __dirname);
 
   const backendPath = path.join(__dirname, '../apps/backend');
-  console.log('Starting backend from:', backendPath);
+  console.log('Initial backend path:', backendPath);
 
-  // Start Python backend using virtual environment
-  const venvPath = path.join(backendPath, 'venv/bin/python3');
-  const uvicornPath = path.join(backendPath, 'venv/bin/uvicorn');
+  // In packaged apps, backend files are in resources/apps/backend
+  let actualBackendPath = backendPath;
+  if (app.isPackaged) {
+    actualBackendPath = path.join(process.resourcesPath, 'apps/backend');
+    console.log('Packaged app: using backend path:', actualBackendPath);
+  }
+  
+  console.log('Final backend path:', actualBackendPath);
+  console.log('Backend path exists:', require('fs').existsSync(actualBackendPath));
+
+  // Start Python backend using virtual environment if available, otherwise system Python
+  const venvPath = path.join(actualBackendPath, 'venv/bin/python3');
+  const uvicornPath = path.join(actualBackendPath, 'venv/bin/uvicorn');
+  
+  console.log('Checking venv path:', venvPath, 'exists:', require('fs').existsSync(venvPath));
+  console.log('Checking uvicorn path:', uvicornPath, 'exists:', require('fs').existsSync(uvicornPath));
   
   // Check if venv exists and use it, otherwise fall back to system Python
   const pythonCmd = require('fs').existsSync(venvPath) ? venvPath : (process.platform === 'win32' ? 'python' : 'python3');
@@ -67,16 +135,20 @@ async function startBackend() {
     if (useDirectUvicorn) {
       // Use uvicorn directly from the virtual environment
       backendProcess = spawn(uvicornPath, ['app.main:app', '--host', '0.0.0.0', '--port', BACKEND_PORT.toString()], {
-        cwd: backendPath,
+        cwd: actualBackendPath,
         stdio: isDev ? 'inherit' : 'pipe',
         env: { ...process.env, BACKEND_PORT: BACKEND_PORT.toString() }
       });
     } else {
       // Fall back to python -m uvicorn
       backendProcess = spawn(pythonCmd, ['-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', BACKEND_PORT.toString()], {
-        cwd: backendPath,
+        cwd: actualBackendPath,
         stdio: isDev ? 'inherit' : 'pipe',
-        env: { ...process.env, BACKEND_PORT: BACKEND_PORT.toString() }
+        env: { 
+          ...process.env, 
+          BACKEND_PORT: BACKEND_PORT.toString(),
+          PYTHONPATH: actualBackendPath
+        }
       });
     }
 
@@ -185,25 +257,20 @@ async function createWindow() {
   let backendStarted = true; // Assume success
   
   if (!isDevelopmentWithExistingBackend) {
-    if (app.isPackaged) {
-      console.log('Packaged build: skipping embedded backend startup (expected).');
-      backendStarted = false; // no dialog in packaged mode
+    const backendAlreadyRunning = await waitForBackend(`http://localhost:${BACKEND_PORT}`, 1, 100);
+    if (backendAlreadyRunning) {
+      console.log('Backend already running - skipping backend startup');
     } else {
-      const backendAlreadyRunning = await waitForBackend(`http://localhost:${BACKEND_PORT}`, 1, 100);
-      if (backendAlreadyRunning) {
-        console.log('Backend already running - skipping backend startup');
-      } else {
-        backendStarted = await startBackend();
-        if (!backendStarted) {
-          console.error('Failed to start backend - continuing without backend');
-          // Only show dialog in dev to alert developer
-          if (isDev) {
-            const { dialog } = require('electron');
-            await dialog.showErrorBox(
-              'Backend Startup Failed',
-              `Failed to start the backend server on port ${BACKEND_PORT}. Some features may not work. Check terminal for details.`
-            );
-          }
+      backendStarted = await startBackend();
+      if (!backendStarted) {
+        console.error('Failed to start backend - continuing without backend');
+        // Show dialog to inform user
+        if (isDev || app.isPackaged) {
+          const { dialog } = require('electron');
+          await dialog.showErrorBox(
+            'Backend Startup Failed',
+            `Failed to start the backend server on port ${BACKEND_PORT}. Some features may not work. Check terminal for details.`
+          );
         }
       }
     }

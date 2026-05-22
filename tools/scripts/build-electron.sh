@@ -76,11 +76,21 @@ fi
 # Test backend import
 echo -e "${BLUE}🧪 Testing backend...${NC}"
 cd apps/backend
-source venv/bin/activate
-python3 -c "import app.main; print('✅ Backend imports successfully')" || {
-    echo -e "${RED}❌ Backend test failed${NC}"
-    exit 1
-}
+
+# Check if virtual environment exists and has required packages
+if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+    # Test import using the virtual environment
+    ./venv/bin/python3 -c "import sys; sys.path.insert(0, '.'); import app.main; print('✅ Backend imports successfully')" || {
+        echo -e "${RED}❌ Backend test failed${NC}"
+        exit 1
+    }
+else
+    # Fallback to system Python with path adjustment
+    PYTHONPATH=. python3 -c "import app.main; print('✅ Backend imports successfully')" || {
+        echo -e "${RED}❌ Backend test failed${NC}"
+        exit 1
+    }
+fi
 cd "$PROJECT_ROOT"
 
 # Build Electron app

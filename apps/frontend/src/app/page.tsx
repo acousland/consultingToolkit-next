@@ -2,11 +2,11 @@ import Link from "next/link";
 
 export default function Home() {
   const cards = [
-    { title: "Business Toolkit", emoji: "🔍", desc: "Pain point analysis, capability management, and strategic alignment tools.", href: "/toolkits/business", cta: "Open" },
-    { title: "Applications Toolkit", emoji: "🏗️", desc: "Map and analyse the technology landscape.", href: "/toolkits/applications", cta: "Open" },
-    { title: "Data, Information, and AI", emoji: "📊", desc: "Design data models, information architecture, and AI solutions.", href: "/toolkits/data-ai", cta: "Open" },
-    { title: "Graphic Design Toolkit", emoji: "🎨", desc: "AI-powered visual analysis, design consistency, and presentation optimization tools.", href: "/toolkits/graphic-design", cta: "Open" },
-    { title: "Engagement Planning", emoji: "📅", desc: "Plan and structure client engagements.", href: "/toolkits/engagement", cta: "Open" },
+    { title: "Business Toolkit", emoji: "🔍", desc: "Pain point cleanup, capability management, and strategic alignment tools.", href: "/toolkits/business", cta: "Open", active: true },
+    { title: "Applications Toolkit", emoji: "🏗️", desc: "Map and analyse the technology landscape.", href: "/toolkits/applications", cta: "Open", badge: "In Development" },
+    { title: "Data, Information, and AI", emoji: "📊", desc: "Design data models, information architecture, and AI solutions.", href: "/toolkits/data-ai", cta: "Open", badge: "In Development" },
+    { title: "Graphic Design Toolkit", emoji: "🎨", desc: "AI-powered visual analysis, design consistency, and presentation optimization tools.", href: "/toolkits/graphic-design", cta: "Open", badge: "In Development" },
+    { title: "Engagement Planning", emoji: "📅", desc: "Plan and structure client engagements.", href: "/toolkits/engagement", cta: "Open", badge: "In Development" },
     { title: "Intelligence Toolkit", emoji: "🧠", desc: "Analyze trends, insights, and intelligence patterns across organizational data.", href: "/toolkits/intelligence", cta: "Open", badge: "Coming Soon" },
   ];
 
@@ -23,7 +23,7 @@ export default function Home() {
           Consulting Toolkit
         </h1>
         <p className="text-lg md:text-xl text-gray-700 dark:text-gray-300 mt-3 max-w-2xl">
-          An AI‑assisted workspace to surface organisational pain points, group them into themes, map capabilities & applications, plan engagements, align strategy, and accelerate data / information / AI solution design.
+          A comprehensive toolkit for pain point analysis, capability management, and strategic alignment. Transform raw feedback into actionable insights with intelligent processing.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link href="/toolkits/business" className="px-5 py-2.5 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow hover:opacity-95">

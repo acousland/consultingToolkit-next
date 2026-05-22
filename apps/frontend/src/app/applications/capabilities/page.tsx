@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { ExcelDataInput } from "@/components/ExcelDataInput";
+import { API_BASE } from "@/lib/api";
 import { StructuredExcelSelection, emptyStructuredExcelSelection } from "@/types/excel";
 
 type AppCapMapResult = {
@@ -59,7 +60,7 @@ export default function ApplicationCapabilityMap() {
       formData.append("additional_context", context.trim());
       formData.append("batch_size", String(batchSize));
 
-      const res = await fetch("/api/ai/applications/capabilities/map-files", {
+      const res = await fetch(`${API_BASE}/ai/applications/capabilities/map-files`, {
         method: "POST",
         body: formData
       });
@@ -96,7 +97,7 @@ export default function ApplicationCapabilityMap() {
       formData.append("additional_context", context.trim());
       formData.append("batch_size", String(batchSize));
 
-      const res = await fetch("/api/ai/applications/capabilities/map-files.xlsx", {
+      const res = await fetch(`${API_BASE}/ai/applications/capabilities/map-files.xlsx`, {
         method: "POST",
         body: formData
       });

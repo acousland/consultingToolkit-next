@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { ExcelDataInput } from "@/components/ExcelDataInput";
+import { API_BASE } from "@/lib/api";
 import { StructuredExcelSelection, emptyStructuredExcelSelection } from "@/types/excel";
 
 type IndividualAppMapResponse = {
@@ -57,7 +58,7 @@ export default function IndividualAppMap() {
       formData.append("application_description", applicationDescription.trim());
       formData.append("additional_context", additionalContext.trim());
 
-      const res = await fetch("/api/ai/applications/map-file", {
+      const res = await fetch(`${API_BASE}/ai/applications/map-file`, {
         method: "POST",
         body: formData
       });

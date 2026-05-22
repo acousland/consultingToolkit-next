@@ -59,7 +59,7 @@ fi
 
 # Test critical frontend routes
 print_status "Testing frontend routes..." $BLUE
-critical_routes=("/" "/brand/brand-consistency-checker" "/pain-points" "/applications/capabilities")
+critical_routes=("/" "/toolkits/graphic-design/brand-consistency-checker" "/pain-points" "/applications/capabilities")
 
 for route in "${critical_routes[@]}"; do
     if curl -s -L "http://localhost:3000${route}" | grep -q "html\|<!DOCTYPE"; then
@@ -75,7 +75,7 @@ critical_files=(
     "apps/backend/app/services/brand_consistency.py"
     "apps/backend/app/routers/ai.py"  
     "apps/frontend/src/components/NavBar.tsx"
-    "apps/frontend/src/app/brand/brand-consistency-checker/page.tsx"
+    "apps/frontend/src/app/toolkits/graphic-design/brand-consistency-checker/page.tsx"
 )
 
 for file in "${critical_files[@]}"; do

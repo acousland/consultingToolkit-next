@@ -27,7 +27,7 @@ class HealthMonitor:
         ]
         self.frontend_routes = [
             "/",
-            "/brand/brand-consistency-checker",
+            "/toolkits/graphic-design/brand-consistency-checker",
             "/pain-points",
             "/applications/capabilities"
         ]

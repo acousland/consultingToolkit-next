@@ -165,7 +165,7 @@ essential_files=(
     "./backend/requirements.txt"
     "./backend/app/main.py"
     "./backend/app/services/brand_consistency.py"
-    "./frontend/src/app/brand/brand-consistency-checker/page.tsx"
+    "./apps/frontend/src/app/toolkits/graphic-design/brand-consistency-checker/page.tsx"
     "./test-suite.js"
     "./quick-test.sh" 
     "./TESTING_CHECKLIST.md"

@@ -42,25 +42,32 @@ export default function GraphicDesignToolkit() {
           </div>
         </Link>
 
-        {/* Future tools placeholder */}
-        <div className="p-6 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 opacity-60">
+        {/* Brand Consistency Checker */}
+        <Link 
+          href="/toolkits/graphic-design/brand-consistency-checker"
+          className="group block p-6 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800 hover:shadow-lg transition-all duration-200"
+        >
           <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-gray-400 rounded-lg text-white">
+            <div className="p-3 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-lg text-white">
               🎨
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-400">
+              <h3 className="text-lg font-semibold group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                 Brand Consistency Checker
               </h3>
-              <p className="text-sm text-gray-500">
-                Coming Soon
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                AI-powered brand compliance analysis
               </p>
             </div>
           </div>
-          <p className="text-gray-600 dark:text-gray-400 text-sm">
-            Analyze your visual content for brand guideline compliance, color consistency, and typography standards.
+          <p className="text-gray-700 dark:text-gray-300 text-sm">
+            Upload a brand style guide PDF and presentation PDF to evaluate per‑slide adherence to brand rules, color consistency, and typography standards.
           </p>
-        </div>
+          <div className="mt-4 flex items-center text-emerald-600 dark:text-emerald-400 text-sm font-medium">
+            Launch Tool
+            <span className="ml-2 group-hover:translate-x-1 transition-transform">→</span>
+          </div>
+        </Link>
 
         <div className="p-6 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 opacity-60">
           <div className="flex items-center gap-4 mb-4">

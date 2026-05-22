@@ -105,7 +105,7 @@ class TestSuite {
     async testFrontendRoutes() {
         const routes = [
             '/',
-            '/brand/brand-consistency-checker',
+            '/toolkits/graphic-design/brand-consistency-checker',
             '/pain-points',
             '/applications/capabilities',
             '/applications/future-portfolio',
@@ -140,7 +140,7 @@ class TestSuite {
             './apps/backend/app/services/brand_consistency.py',
             './apps/backend/app/routers/ai.py',
             './apps/frontend/src/components/NavBar.tsx',
-            './apps/frontend/src/app/brand/brand-consistency-checker/page.tsx'
+            './apps/frontend/src/app/toolkits/graphic-design/brand-consistency-checker/page.tsx'
         ];
 
         for (const file of criticalFiles) {
